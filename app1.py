@@ -16,7 +16,7 @@ import logging
 import json
 import os
 
-# ðŸ”§ CRITICAL FIX: Load environment variables from .env file
+# 🔧 CRITICAL FIX: Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -121,7 +121,7 @@ class DataManager:
                 raise ValueError("Data must have 'lat' and 'lon' columns")
             
             df = df.sort_values(['lat', 'lon', 'timestamp'])
-            logger.info(f"âœ“ Loaded {len(df)} data rows")
+            logger.info(f"✓ Loaded {len(df)} data rows")
             
             # Log available columns for debugging
             logger.info(f"Available columns: {list(df.columns)}")
@@ -148,7 +148,7 @@ class DataManager:
                         'pin': row.get('PIN Code', ''),
                         'area': row.get('Area/Locality', row['Place'])
                     }
-                logger.info(f"âœ“ Loaded {len(whitelist)} locations from whitelist")
+                logger.info(f"✓ Loaded {len(whitelist)} locations from whitelist")
             
             # Add locations from actual data
             if len(self.data) > 0 and 'location' in self.data.columns:
@@ -173,7 +173,7 @@ class DataManager:
                         }
                         added += 1
                 
-                logger.info(f"âœ“ Added {added} locations from actual data")
+                logger.info(f"✓ Added {added} locations from actual data")
             
             if len(whitelist) == 0:
                 logger.error("No locations loaded!")
@@ -226,7 +226,7 @@ class DataManager:
         if len(loc_data) == 0:
             raise ValueError(f"No data found for {location_name} at ({lat}, {lon})")
         
-        logger.info(f"âœ“ Found {len(loc_data)} data rows for {location_name}")
+        logger.info(f"✓ Found {len(loc_data)} data rows for {location_name}")
         
         loc_data = loc_data.sort_values('timestamp')
         
@@ -393,16 +393,16 @@ def extract_weather_data(current_data: pd.DataFrame) -> Dict:
                 original_value = value
                 
                 # Convert Fahrenheit to Celsius for temperature fields
-                # If value > 50, it's likely Fahrenheit (Delhi rarely exceeds 50Â°C)
+                # If value > 50, it's likely Fahrenheit (Delhi rarely exceeds 50°C)
                 if feature in ['temperature', 'dewPoint', 'apparentTemperature'] and value > 50:
                     value = (value - 32) * 5 / 9
-                    logger.info(f"Converted {feature}: {original_value:.1f}Â°F â†’ {value:.1f}Â°C")
+                    logger.info(f"Converted {feature}: {original_value:.1f}°F → {value:.1f}°C")
                 
                 weather[feature] = value
             else:
                 weather[feature] = 0.0
     
-    logger.info(f"Weather extracted: temperature={weather.get('temperature', 0):.1f}Â°C, humidity={weather.get('humidity', 0):.1f}%, windSpeed={weather.get('windSpeed', 0):.1f} km/h")
+    logger.info(f"Weather extracted: temperature={weather.get('temperature', 0):.1f}°C, humidity={weather.get('humidity', 0):.1f}%, windSpeed={weather.get('windSpeed', 0):.1f} km/h")
     return weather
 
 def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, standard: str = 'IN'):
@@ -439,7 +439,7 @@ def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, stand
                     'aqi_mid': sub_idx['aqi_mid'],
                     'concentration_range': sub_idx['concentration_range']
                 }
-                logger.info(f"âœ“ {pollutant} {horizon}: {category} ({confidence:.2%})")
+                logger.info(f"✓ {pollutant} {horizon}: {category} ({confidence:.2%})")
             except Exception as e:
                 logger.error(f"Failed {pollutant} {horizon}: {e}")
                 results[pollutant][horizon] = {
@@ -475,11 +475,11 @@ class GeminiAssistant:
         self.model_name = None  # Track which model we're using
         
         if not Config.GEMINI_API_KEY:
-            logger.warning("âŒ GEMINI_API_KEY not found in environment")
+            logger.warning("❌ GEMINI_API_KEY not found in environment")
             return
             
         if not GEMINI_AVAILABLE:
-            logger.warning("âŒ google-generativeai package not installed")
+            logger.warning("❌ google-generativeai package not installed")
             return
         
         try:
@@ -501,7 +501,7 @@ class GeminiAssistant:
                     if test_response:
                         self.enabled = True
                         self.model_name = model_name  # Store the working model name
-                        logger.info(f"âœ“ Gemini AI initialized with {model_name}")
+                        logger.info(f"✓ Gemini AI initialized with {model_name}")
                         break
                 except Exception as e:
                     logger.debug(f"Model {model_name} not available: {e}")
@@ -512,7 +512,7 @@ class GeminiAssistant:
                 self.enabled = False
                     
         except Exception as e:
-            logger.error(f"âŒ Gemini initialization failed: {e}")
+            logger.error(f"❌ Gemini initialization failed: {e}")
             self.enabled = False
     
     def get_response(self, message: str, context: Dict) -> Dict:
@@ -532,50 +532,22 @@ class GeminiAssistant:
         
         try:
             # Extract user profile information
-            age_category = user_profile.get('age_category', '')
-            health_category = user_profile.get('health_category', '')
-            gender = user_profile.get('gender', '')
+            profile_type = user_profile.get('profile_type', '')
             profile_label = user_profile.get('profile_label', 'general public')
             
-            # Build profile context with detailed breakdown
+            # Build profile context
             profile_context = ""
-            profile_parts = []
-            
-            if age_category or health_category or gender:
-                age_guidance = {
-                    'child': 'Children have developing lungs and breathe more air relative to body weight. Extra sensitive to pollution.',
-                    'teenager': 'Teenagers are active and breathe more air during sports/activities. Monitor for symptoms.',
-                    'adult': 'Adults should take standard precautions based on AQI levels.',
-                    'elderly': 'Elderly persons have weaker immune systems and may have existing conditions. High risk group.'
+            if profile_type:
+                profile_guidance = {
+                    'child': 'Children are highly sensitive to air pollution. Lungs are still developing. Extra precautions needed.',
+                    'teenager': 'Teenagers are active and breathe more air. Caution during sports/outdoor activities.',
+                    'elderly': 'Elderly persons have weaker immune systems and existing health conditions. High risk group.',
+                    'pregnant': 'Pregnant women need special care - pollution affects both mother and baby. Avoid exposure.',
+                    'asthma': 'Asthma patients are extremely sensitive to air pollution. Even low pollution can trigger attacks.',
+                    'heart_condition': 'Heart patients at high risk from air pollution. Can trigger cardiac events.',
+                    'respiratory': 'People with respiratory issues highly vulnerable. Avoid outdoor exposure during poor AQI.'
                 }
-                
-                health_guidance = {
-                    'asthma': 'Asthma patients extremely sensitive - even low pollution can trigger attacks. Keep rescue inhaler ready.',
-                    'heart_condition': 'Heart patients at high risk - pollution can trigger cardiac events. Avoid exertion in poor air.',
-                    'respiratory': 'Respiratory issues make them highly vulnerable. Avoid outdoor exposure during poor AQI.',
-                    'copd': 'COPD patients must take extreme caution - pollution can cause severe exacerbations.',
-                    'diabetes': 'Diabetics may have increased inflammation from pollution. Monitor blood sugar and avoid exposure.',
-                    'pregnant': 'Pregnancy requires special care - pollution affects both mother and baby. Minimize exposure.'
-                }
-                
-                gender_context = {
-                    'female': 'Women may experience different health impacts from air pollution.',
-                    'male': 'Men should be aware of cardiovascular risks from pollution exposure.'
-                }
-                
-                if age_category:
-                    profile_parts.append(age_guidance.get(age_category, ''))
-                
-                if health_category:
-                    profile_parts.append(health_guidance.get(health_category, ''))
-                
-                if gender and gender in gender_context:
-                    profile_parts.append(gender_context[gender])
-                
-                if profile_parts:
-                    profile_context = f"\n\nIMPORTANT: User profile is {profile_label}. "
-                    profile_context += " ".join(profile_parts)
-                    profile_context += " Tailor your advice specifically for this profile."
+                profile_context = f"\n\nIMPORTANT: User is {profile_label}. {profile_guidance.get(profile_type, '')} Tailor your advice specifically for this group."
             
             # FIXED: Add weather context
             weather_context = ""
@@ -583,7 +555,7 @@ class GeminiAssistant:
                 temp = weather_data.get('temperature', 0)
                 humidity = weather_data.get('humidity', 0)
                 wind = weather_data.get('windSpeed', 0)
-                weather_context = f"\n\nWeather Conditions:\n- Temperature: {temp:.1f}Â°C\n- Humidity: {humidity:.1f}%\n- Wind Speed: {wind:.1f} km/h"
+                weather_context = f"\n\nWeather Conditions:\n- Temperature: {temp:.1f}°C\n- Humidity: {humidity:.1f}%\n- Wind Speed: {wind:.1f} km/h"
             
             prompt = f"""You are an expert AQI health advisor for Delhi NCR, providing personalized air quality advice.
 
@@ -610,7 +582,7 @@ Provide your response:"""
             response = self.model.generate_content(prompt)
             
             if response and response.text:
-                logger.info("âœ“ Received response from Gemini")
+                logger.info("✓ Received response from Gemini")
                 return {
                     'response': response.text,
                     'updated_profile': None
@@ -623,7 +595,7 @@ Provide your response:"""
                 }
                 
         except Exception as e:
-            logger.error(f"âŒ Gemini error: {str(e)}")
+            logger.error(f"❌ Gemini error: {str(e)}")
             logger.exception(e)  # Log full traceback
             return {
                 'response': self._static_response(context, user_profile),
@@ -636,12 +608,12 @@ Provide your response:"""
         
         # Base responses by AQI category
         base_responses = {
-            'Good': "âœ… Air quality is excellent! Safe for all outdoor activities.",
-            'Satisfactory': "ðŸ˜Š Air quality is acceptable for most people.",
-            'Moderate': "âš ï¸ Moderate air quality. Sensitive individuals should be cautious.",
-            'Poor': "ðŸš¨ Poor air quality. Limit outdoor activities.",
-            'Very_Poor': "â›” Very poor air quality! Stay indoors.",
-            'Severe': "ðŸ”´ SEVERE air quality! Do not go outside."
+            'Good': "✅ Air quality is excellent! Safe for all outdoor activities.",
+            'Satisfactory': "😊 Air quality is acceptable for most people.",
+            'Moderate': "⚠️ Moderate air quality. Sensitive individuals should be cautious.",
+            'Poor': "🚨 Poor air quality. Limit outdoor activities.",
+            'Very_Poor': "⛔ Very poor air quality! Stay indoors.",
+            'Severe': "🔴 SEVERE air quality! Do not go outside."
         }
         
         response = base_responses.get(category, "How can I help you with air quality information?")
@@ -650,33 +622,22 @@ Provide your response:"""
         if weather and weather.get('temperature', 0) > 0:
             temp = weather.get('temperature', 0)
             humidity = weather.get('humidity', 0)
-            response += f" Current temperature is {temp:.1f}Â°C with {humidity:.1f}% humidity."
+            response += f" Current temperature is {temp:.1f}°C with {humidity:.1f}% humidity."
         
-        # Add profile-specific advice based on new structure
+        # Add profile-specific advice
         if user_profile:
-            age_category = user_profile.get('age_category', '')
-            health_category = user_profile.get('health_category', '')
-            
-            age_advice = {
+            profile_type = user_profile.get('profile_type', '')
+            profile_advice = {
                 'child': " Children should avoid outdoor play during poor air quality.",
                 'elderly': " Elderly persons should take extra precautions and stay indoors.",
-                'teenager': " Teenagers should avoid intensive outdoor sports during poor AQI."
-            }
-            
-            health_advice = {
                 'pregnant': " Pregnant women should minimize outdoor exposure to protect the baby.",
                 'asthma': " Asthma patients should keep rescue inhalers ready and avoid triggers.",
                 'heart_condition': " Heart patients should avoid physical exertion outdoors.",
-                'respiratory': " Those with respiratory issues should use air purifiers indoors.",
-                'copd': " COPD patients must stay indoors and use supplemental oxygen if needed.",
-                'diabetes': " Diabetics should monitor blood sugar and limit outdoor exposure."
+                'respiratory': " Those with respiratory issues should use air purifiers indoors."
             }
             
-            if age_category in age_advice:
-                response += age_advice[age_category]
-            
-            if health_category in health_advice:
-                response += health_advice[health_category]
+            if profile_type in profile_advice:
+                response += profile_advice[profile_type]
         
         return response
 
