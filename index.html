@@ -19,7 +19,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     
-    <!-- ðŸš¨ API Configuration - REPLACE WITH YOUR RAILWAY URL -->
+    <!-- 🚨 API Configuration - REPLACE WITH YOUR RAILWAY URL -->
     <script>
         window.API_CONFIG = {
             BASE_URL: 'https://web-production-2120.up.railway.app/api'
@@ -367,7 +367,7 @@
                             <h1 class="text-3xl font-black text-gray-900 tracking-tight">
                                 AQI Dashboard
                             </h1>
-                            <p class="text-sm text-gray-600 font-medium">Delhi NCR â€¢ Real-time Air Quality Monitoring</p>
+                            <p class="text-sm text-gray-600 font-medium">Delhi NCR • Real-time Air Quality Monitoring</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
@@ -537,7 +537,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                     <!-- Region -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-3">ðŸ“ Region</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-3">📍 Region</label>
                         <select x-model="selectedRegion" @change="loadLocations()" 
                                 class="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all text-sm font-medium"
                                 aria-label="Select region">
@@ -549,7 +549,7 @@
 
                     <!-- Location -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-3">ðŸ“Œ Location</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-3">📌 Location</label>
                         <select x-model="selectedLocation" @change="loadPredictions()" 
                                 class="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all text-sm font-medium"
                                 aria-label="Select location">
@@ -562,7 +562,7 @@
 
                     <!-- Forecast -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-3">â±ï¸ Forecast</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-3">⏱️ Forecast</label>
                         <div class="grid grid-cols-4 gap-2">
                             <template x-for="h in horizons" :key="h">
                                 <button @click="horizon = h" 
@@ -577,26 +577,26 @@
 
                     <!-- Standard -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-3">ðŸŽ¯ Standard</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-3">🎯 Standard</label>
                         <div class="grid grid-cols-2 gap-2">
                             <button @click="standard = 'IN'; loadPredictions()" 
                                     :class="standard === 'IN' ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'"
                                     class="px-4 py-2.5 rounded-xl font-bold text-xs transition-all border-2 border-gray-200"
                                     aria-label="Indian NAQI standard">
-                                ðŸ‡®ðŸ‡³ NAQI
+                                🇮🇳 NAQI
                             </button>
                             <button @click="standard = 'US'; loadPredictions()" 
                                     :class="standard === 'US' ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'"
                                     class="px-4 py-2.5 rounded-xl font-bold text-xs transition-all border-2 border-gray-200"
                                     aria-label="US EPA standard">
-                                ðŸ‡ºðŸ‡¸ EPA
+                                🇺🇸 EPA
                             </button>
                         </div>
                     </div>
 
                     <!-- Settings -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-3">âš™ï¸ Settings</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-3">⚙️ Settings</label>
                         <div class="space-y-2">
                             <button @click="autoRefresh = !autoRefresh; toggleAutoRefresh()" 
                                     class="w-full px-4 py-2.5 rounded-xl font-bold text-xs transition-all border-2 flex items-center justify-center gap-2"
@@ -657,7 +657,7 @@
                                 
                                 <div class="relative z-10">
                                     <div class="text-white/90 text-xs font-bold uppercase tracking-wider mb-3 aqi-text-shadow">
-                                        <span x-text="selectedLocation"></span> â€¢ <span x-text="horizon"></span> Forecast
+                                        <span x-text="selectedLocation"></span> • <span x-text="horizon"></span> Forecast
                                     </div>
                                     <div class="text-8xl font-black mb-4 text-white aqi-text-shadow leading-none">
                                         <div x-text="Math.round(predictions.overall[horizon]?.aqi_mid)"></div>
@@ -692,7 +692,7 @@
                                         <div>
                                             <h3 class="text-sm font-bold text-gray-600 uppercase tracking-wider mb-1" x-text="pollutant.name"></h3>
                                             <div class="text-xs text-gray-500 tooltip">
-                                                <span>â„¹ï¸ Info</span>
+                                                <span>ℹ️ Info</span>
                                                 <span class="tooltip-text" x-text="pollutant.description"></span>
                                             </div>
                                         </div>
@@ -734,17 +734,17 @@
                             </h3>
                             <div class="grid grid-cols-3 gap-4">
                                 <div class="text-center p-4 bg-gray-50 rounded-xl">
-                                    <div class="text-3xl mb-2">ðŸŒ¡ï¸</div>
+                                    <div class="text-3xl mb-2">🌡️</div>
                                     <div class="text-2xl font-bold text-gray-900" x-text="weather.temperature + 'Â°C'"></div>
                                     <div class="text-xs text-gray-600 font-semibold">Temperature</div>
                                 </div>
                                 <div class="text-center p-4 bg-gray-50 rounded-xl">
-                                    <div class="text-3xl mb-2">ðŸ’§</div>
+                                    <div class="text-3xl mb-2">💧</div>
                                     <div class="text-2xl font-bold text-gray-900" x-text="weather.humidity + '%'"></div>
                                     <div class="text-xs text-gray-600 font-semibold">Humidity</div>
                                 </div>
                                 <div class="text-center p-4 bg-gray-50 rounded-xl">
-                                    <div class="text-3xl mb-2">ðŸ’¨</div>
+                                    <div class="text-3xl mb-2">💨</div>
                                     <div class="text-2xl font-bold text-gray-900" x-text="weather.windSpeed + ' km/h'"></div>
                                     <div class="text-xs text-gray-600 font-semibold">Wind Speed</div>
                                 </div>
@@ -763,7 +763,7 @@
                                 <div class="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border-2 border-green-200">
                                     <div class="flex items-center gap-3">
                                         <div class="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center">
-                                            <span class="text-2xl">âœ¨</span>
+                                            <span class="text-2xl">✨</span>
                                         </div>
                                         <div>
                                             <div class="font-bold text-gray-900" x-text="bestTime.period"></div>
@@ -895,7 +895,7 @@
                         <div class="gradient-primary p-6">
                             <div class="flex items-center gap-4">
                                 <div class="w-14 h-14 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center">
-                                    <span class="text-3xl">ðŸ¤–</span>
+                                    <span class="text-3xl">🤖</span>
                                 </div>
                                 <div class="flex-1">
                                     <h2 class="text-2xl font-black text-white">AI Health Assistant</h2>
@@ -973,7 +973,7 @@
                                             <div :class="msg.role === 'user' ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white ml-12' : 'bg-white text-gray-800 mr-12 border-2 border-gray-100'"
                                                  class="rounded-2xl px-4 py-3 shadow-md max-w-2xl">
                                                 <div class="text-xs font-bold mb-2 opacity-80"
-                                                     x-text="msg.role === 'user' ? 'You' : 'ðŸ¤– AI Assistant'">
+                                                     x-text="msg.role === 'user' ? 'You' : '🤖 AI Assistant'">
                                                 </div>
                                                 <div class="text-sm leading-relaxed whitespace-pre-wrap" x-text="msg.content"></div>
                                             </div>
@@ -983,7 +983,7 @@
                                     <!-- Typing Indicator -->
                                     <div x-show="isTyping" class="flex justify-start chat-message">
                                         <div class="bg-white text-gray-800 mr-12 border-2 border-gray-100 rounded-2xl px-4 py-3 shadow-md">
-                                            <div class="text-xs font-bold mb-2 opacity-80">ðŸ¤– AI Assistant</div>
+                                            <div class="text-xs font-bold mb-2 opacity-80">🤖 AI Assistant</div>
                                             <div class="flex items-center gap-2">
                                                 <div class="flex gap-1">
                                                     <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0s"></div>
@@ -1063,8 +1063,8 @@
                 pollutants: [
                     { key: 'PM25', name: 'PM2.5', description: 'Fine particles smaller than 2.5 micrometers' },
                     { key: 'PM10', name: 'PM10', description: 'Particles smaller than 10 micrometers' },
-                    { key: 'NO2', name: 'NOâ‚‚', description: 'Nitrogen Dioxide from combustion' },
-                    { key: 'OZONE', name: 'Oâ‚ƒ', description: 'Ground-level ozone from reactions' }
+                    { key: 'NO2', name: 'NO₂', description: 'Nitrogen Dioxide from combustion' },
+                    { key: 'OZONE', name: 'O₃', description: 'Ground-level ozone from reactions' }
                 ],
                 
                 // New features
@@ -1588,27 +1588,27 @@
                     
                     if (aqi <= 50) {
                         this.healthRecommendations = [
-                            { icon: 'ðŸƒ', title: 'Exercise Freely', description: 'Air quality is excellent. Perfect for all outdoor activities and exercise.', color: 'green' },
-                            { icon: 'ðŸªŸ', title: 'Ventilate Well', description: 'Keep windows open to refresh indoor air with clean outdoor air.', color: 'green' },
-                            { icon: 'ðŸ‘¨â€ðŸ‘©â€ðŸ‘§', title: 'Family Activities', description: 'Ideal conditions for children and elderly to spend time outdoors.', color: 'green' }
+                            { icon: '🏃', title: 'Exercise Freely', description: 'Air quality is excellent. Perfect for all outdoor activities and exercise.', color: 'green' },
+                            { icon: '🪟', title: 'Ventilate Well', description: 'Keep windows open to refresh indoor air with clean outdoor air.', color: 'green' },
+                            { icon: 'ð👨‍👩‍👧', title: 'Family Activities', description: 'Ideal conditions for children and elderly to spend time outdoors.', color: 'green' }
                         ];
                     } else if (aqi <= 100) {
                         this.healthRecommendations = [
-                            { icon: 'ðŸš¶', title: 'Moderate Activity', description: 'Generally safe for outdoor activities. Sensitive groups should limit prolonged exertion.', color: 'yellow' },
-                            { icon: 'â±ï¸', title: 'Time Awareness', description: 'Consider timing outdoor activities during better air quality hours.', color: 'yellow' },
-                            { icon: 'ðŸ‘€', title: 'Monitor Symptoms', description: 'Watch for any breathing discomfort, especially if you\'re sensitive.', color: 'yellow' }
+                            { icon: '🚶', title: 'Moderate Activity', description: 'Generally safe for outdoor activities. Sensitive groups should limit prolonged exertion.', color: 'yellow' },
+                            { icon: '⏱️', title: 'Time Awareness', description: 'Consider timing outdoor activities during better air quality hours.', color: 'yellow' },
+                            { icon: '👀', title: 'Monitor Symptoms', description: 'Watch for any breathing discomfort, especially if you\'re sensitive.', color: 'yellow' }
                         ];
                     } else if (aqi <= 200) {
                         this.healthRecommendations = [
-                            { icon: 'ðŸ˜·', title: 'Wear Masks', description: 'Use N95 masks outdoors. Sensitive groups should reduce outdoor exposure.', color: 'orange' },
-                            { icon: 'ðŸ ', title: 'Stay Indoors', description: 'Limit outdoor activities. Keep windows closed and use air purifiers.', color: 'orange' },
-                            { icon: 'ðŸ’Š', title: 'Medical Attention', description: 'Those with respiratory conditions should keep medications handy.', color: 'orange' }
+                            { icon: '😷', title: 'Wear Masks', description: 'Use N95 masks outdoors. Sensitive groups should reduce outdoor exposure.', color: 'orange' },
+                            { icon: '🏠', title: 'Stay Indoors', description: 'Limit outdoor activities. Keep windows closed and use air purifiers.', color: 'orange' },
+                            { icon: '💊', title: 'Medical Attention', description: 'Those with respiratory conditions should keep medications handy.', color: 'orange' }
                         ];
                     } else {
                         this.healthRecommendations = [
-                            { icon: 'ðŸš¨', title: 'Avoid Outdoors', description: 'Everyone should avoid all outdoor activities. Stay indoors with air purifiers.', color: 'red' },
-                            { icon: 'ðŸ˜·', title: 'N95 Masks Required', description: 'Wear properly fitted N95 masks if you must go outside.', color: 'red' },
-                            { icon: 'ðŸ¥', title: 'Seek Medical Help', description: 'Contact healthcare providers if experiencing breathing difficulties.', color: 'red' }
+                            { icon: '🚨', title: 'Avoid Outdoors', description: 'Everyone should avoid all outdoor activities. Stay indoors with air purifiers.', color: 'red' },
+                            { icon: '😷', title: 'N95 Masks Required', description: 'Wear properly fitted N95 masks if you must go outside.', color: 'red' },
+                            { icon: '🏥', title: 'Seek Medical Help', description: 'Contact healthcare providers if experiencing breathing difficulties.', color: 'red' }
                         ];
                     }
                 },
@@ -1622,12 +1622,12 @@
                     
                     if (aqi > 200) {
                         this.sendBrowserNotification(
-                            'ðŸš¨ Severe Air Quality Alert',
+                            '🚨 Severe Air Quality Alert',
                             `AQI is ${aqi} in ${this.selectedLocation}. Avoid outdoor activities!`
                         );
                     } else if (aqi > 100) {
                         this.sendBrowserNotification(
-                            'âš ï¸ Unhealthy Air Quality',
+                            '⚠️ Unhealthy Air Quality',
                             `AQI is ${aqi} in ${this.selectedLocation}. Limit outdoor exposure.`
                         );
                     }

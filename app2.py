@@ -16,7 +16,7 @@ import logging
 import json
 import os
 
-# 🔧 CRITICAL FIX: Load environment variables from .env file
+# ðŸ”§ CRITICAL FIX: Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -121,7 +121,7 @@ class DataManager:
                 raise ValueError("Data must have 'lat' and 'lon' columns")
             
             df = df.sort_values(['lat', 'lon', 'timestamp'])
-            logger.info(f"✓ Loaded {len(df)} data rows")
+            logger.info(f"âœ“ Loaded {len(df)} data rows")
             
             # Log available columns for debugging
             logger.info(f"Available columns: {list(df.columns)}")
@@ -148,7 +148,7 @@ class DataManager:
                         'pin': row.get('PIN Code', ''),
                         'area': row.get('Area/Locality', row['Place'])
                     }
-                logger.info(f"✓ Loaded {len(whitelist)} locations from whitelist")
+                logger.info(f"âœ“ Loaded {len(whitelist)} locations from whitelist")
             
             # Add locations from actual data
             if len(self.data) > 0 and 'location' in self.data.columns:
@@ -173,7 +173,7 @@ class DataManager:
                         }
                         added += 1
                 
-                logger.info(f"✓ Added {added} locations from actual data")
+                logger.info(f"âœ“ Added {added} locations from actual data")
             
             if len(whitelist) == 0:
                 logger.error("No locations loaded!")
@@ -226,7 +226,7 @@ class DataManager:
         if len(loc_data) == 0:
             raise ValueError(f"No data found for {location_name} at ({lat}, {lon})")
         
-        logger.info(f"✓ Found {len(loc_data)} data rows for {location_name}")
+        logger.info(f"âœ“ Found {len(loc_data)} data rows for {location_name}")
         
         loc_data = loc_data.sort_values('timestamp')
         
@@ -439,7 +439,7 @@ def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, stand
                     'aqi_mid': sub_idx['aqi_mid'],
                     'concentration_range': sub_idx['concentration_range']
                 }
-                logger.info(f"✓ {pollutant} {horizon}: {category} ({confidence:.2%})")
+                logger.info(f"âœ“ {pollutant} {horizon}: {category} ({confidence:.2%})")
             except Exception as e:
                 logger.error(f"Failed {pollutant} {horizon}: {e}")
                 results[pollutant][horizon] = {
@@ -475,11 +475,11 @@ class GeminiAssistant:
         self.model_name = None  # Track which model we're using
         
         if not Config.GEMINI_API_KEY:
-            logger.warning("❌ GEMINI_API_KEY not found in environment")
+            logger.warning("âŒ GEMINI_API_KEY not found in environment")
             return
             
         if not GEMINI_AVAILABLE:
-            logger.warning("❌ google-generativeai package not installed")
+            logger.warning("âŒ google-generativeai package not installed")
             return
         
         try:
@@ -501,7 +501,7 @@ class GeminiAssistant:
                     if test_response:
                         self.enabled = True
                         self.model_name = model_name  # Store the working model name
-                        logger.info(f"✓ Gemini AI initialized with {model_name}")
+                        logger.info(f"âœ“ Gemini AI initialized with {model_name}")
                         break
                 except Exception as e:
                     logger.debug(f"Model {model_name} not available: {e}")
@@ -512,7 +512,7 @@ class GeminiAssistant:
                 self.enabled = False
                     
         except Exception as e:
-            logger.error(f"❌ Gemini initialization failed: {e}")
+            logger.error(f"âŒ Gemini initialization failed: {e}")
             self.enabled = False
     
     def get_response(self, message: str, context: Dict) -> Dict:
@@ -610,7 +610,7 @@ Provide your response:"""
             response = self.model.generate_content(prompt)
             
             if response and response.text:
-                logger.info("✓ Received response from Gemini")
+                logger.info("âœ“ Received response from Gemini")
                 return {
                     'response': response.text,
                     'updated_profile': None
@@ -623,7 +623,7 @@ Provide your response:"""
                 }
                 
         except Exception as e:
-            logger.error(f"❌ Gemini error: {str(e)}")
+            logger.error(f"âŒ Gemini error: {str(e)}")
             logger.exception(e)  # Log full traceback
             return {
                 'response': self._static_response(context, user_profile),
@@ -636,12 +636,12 @@ Provide your response:"""
         
         # Base responses by AQI category
         base_responses = {
-            'Good': "✅ Air quality is excellent! Safe for all outdoor activities.",
-            'Satisfactory': "😊 Air quality is acceptable for most people.",
-            'Moderate': "⚠️ Moderate air quality. Sensitive individuals should be cautious.",
-            'Poor': "🚨 Poor air quality. Limit outdoor activities.",
-            'Very_Poor': "⛔ Very poor air quality! Stay indoors.",
-            'Severe': "🔴 SEVERE air quality! Do not go outside."
+            'Good': "âœ… Air quality is excellent! Safe for all outdoor activities.",
+            'Satisfactory': "ðŸ˜Š Air quality is acceptable for most people.",
+            'Moderate': "âš ï¸ Moderate air quality. Sensitive individuals should be cautious.",
+            'Poor': "ðŸš¨ Poor air quality. Limit outdoor activities.",
+            'Very_Poor': "â›” Very poor air quality! Stay indoors.",
+            'Severe': "ðŸ”´ SEVERE air quality! Do not go outside."
         }
         
         response = base_responses.get(category, "How can I help you with air quality information?")
