@@ -487,10 +487,9 @@ class GeminiAssistant:
             
             # Try multiple model names in order of preference
             models_to_try = [
-                'gemini-1.5-pro-latest',
-                'gemini-1.5-pro',
-                'gemini-pro',
-                'models/gemini-pro'
+                'gemini-2.5-pro',
+                'gemini-2.5-flash',
+                'gemini-2.5-flash-lite'
             ]
             
             for model_name in models_to_try:

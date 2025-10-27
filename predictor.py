@@ -11,10 +11,12 @@ from typing import Dict, List, Tuple, Optional
 import logging
 
 # Import from same directory
-try:
-    from data.feature_engineer import FeatureEngineer, FeatureAligner
-except ImportError:
-    from feature_engineer import FeatureEngineer, FeatureAligner
+from feature_engineer import FeatureEngineer, FeatureAligner
+
+# try:
+#     from data.feature_engineer import FeatureEngineer, FeatureAligner
+# except ImportError:
+#     from feature_engineer import FeatureEngineer, FeatureAligner
 
 logger = logging.getLogger(__name__)
 
