@@ -965,7 +965,7 @@
                                 </p>
                             </div>
 
-                            <!-- Chat Messages -->
+                            <!-- Chat Messages --
                             <div class="bg-gray-50 rounded-2xl p-4 custom-scrollbar" style="max-height: 400px; overflow-y: auto;" x-ref="chatContainer">
                                 <div class="space-y-4">
                                     <template x-for="(msg, index) in messages" :key="index">
@@ -1049,7 +1049,6 @@
                 horizons: ['1h', '6h', '12h', '24h'],
                 standard: 'IN',
                 predictions: null,
-                historicalData: [],  // Store real historical data
                 loading: false,
                 userProfile: {
                     ageCategory: '',
@@ -1057,7 +1056,7 @@
                     gender: ''
                 },
                 messages: [
-                    { role: 'assistant', content: '👋 Hello! I\'m your AI air quality assistant. Select your profile above and ask me about current air quality, health advice, or pollutant risks!' }
+                    { role: 'assistant', content: 'ðŸ‘‹ Hello! I\'m your AI air quality assistant. Select your profile above and ask me about current air quality, health advice, or pollutant risks!' }
                 ],
                 userInput: '',
                 isTyping: false,
@@ -1423,15 +1422,6 @@
                         const data = await response.json();
                         this.predictions = data;
                         
-                        // Store historical data if available
-                        if (data.historical && Array.isArray(data.historical)) {
-                            this.historicalData = data.historical;
-                            console.log('✓ Loaded', this.historicalData.length, 'historical data points');
-                        } else {
-                            console.warn('No historical data in API response');
-                            this.historicalData = [];
-                        }
-                        
                         // FIXED: Extract weather data from API response
                 if (data.weather) {
                     this.weather = {
@@ -1616,7 +1606,7 @@
                         console.error('❌ Error sending message:', error);
                         this.messages.push({ 
                             role: 'assistant', 
-                            content: `Sorry, I encountered an error: ${error.message}. Please check the console for details.` 
+                            content: `Sorry, I encountered an error: ${error.message}. Please check the console for details and make sure your backend server is running.` 
                         });
                     } finally {
                         this.isTyping = false;
@@ -1644,7 +1634,7 @@
                         this.healthRecommendations = [
                             { icon: '🏃', title: 'Exercise Freely', description: 'Air quality is excellent. Perfect for all outdoor activities and exercise.', color: 'green' },
                             { icon: '🪟', title: 'Ventilate Well', description: 'Keep windows open to refresh indoor air with clean outdoor air.', color: 'green' },
-                            { icon: '👨‍👩‍👧', title: 'Family Activities', description: 'Ideal conditions for children and elderly to spend time outdoors.', color: 'green' }
+                            { icon: 'ð👨‍👩‍👧', title: 'Family Activities', description: 'Ideal conditions for children and elderly to spend time outdoors.', color: 'green' }
                         ];
                     } else if (aqi <= 100) {
                         this.healthRecommendations = [
@@ -1716,44 +1706,24 @@
 
                     const ctx = canvas.getContext('2d');
                     
-                    // Use real historical data from API
+                    // Generate simulated historical data for last 48 hours
+                    const hours = 48;
                     const labels = [];
                     const data = [];
                     
-                    if (this.historicalData && this.historicalData.length > 0) {
-                        // Use real data from backend
-                        this.historicalData.forEach((point, index) => {
-                            // Parse timestamp
-                            const timestamp = new Date(point.timestamp);
-                            
-                            // Show label every 6 hours for readability
-                            if (index % 6 === 0) {
-                                labels.push(timestamp.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) + ' ' + 
-                                           timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
-                            } else {
-                                labels.push('');
-                            }
-                            
-                            data.push(point.aqi);
-                        });
-                        console.log('✓ Chart using', data.length, 'real data points');
-                    } else {
-                        // Fallback: Generate simulated data if no real data available
-                        console.warn('No historical data available, using simulated data');
-                        const hours = 48;
-                        for (let i = hours - 1; i >= 0; i--) {
-                            const date = new Date();
-                            date.setHours(date.getHours() - i);
-                            
-                            if (i % 6 === 0) {
-                                labels.push(date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) + ' ' + 
-                                           date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
-                            } else {
-                                labels.push('');
-                            }
-                            
-                            data.push(Math.round(80 + Math.random() * 100));
+                    for (let i = hours - 1; i >= 0; i--) {
+                        const date = new Date();
+                        date.setHours(date.getHours() - i);
+                        
+                        // Show label every 6 hours for readability
+                        if (i % 6 === 0) {
+                            labels.push(date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) + ' ' + 
+                                       date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
+                        } else {
+                            labels.push('');
                         }
+                        
+                        data.push(Math.round(80 + Math.random() * 100)); // Simulated data
                     }
 
                     this.historicalChart = new Chart(ctx, {

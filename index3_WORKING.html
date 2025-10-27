@@ -1049,7 +1049,6 @@
                 horizons: ['1h', '6h', '12h', '24h'],
                 standard: 'IN',
                 predictions: null,
-                historicalData: [],  // Store real historical data
                 loading: false,
                 userProfile: {
                     ageCategory: '',
@@ -1423,15 +1422,6 @@
                         const data = await response.json();
                         this.predictions = data;
                         
-                        // Store historical data if available
-                        if (data.historical && Array.isArray(data.historical)) {
-                            this.historicalData = data.historical;
-                            console.log('✓ Loaded', this.historicalData.length, 'historical data points');
-                        } else {
-                            console.warn('No historical data in API response');
-                            this.historicalData = [];
-                        }
-                        
                         // FIXED: Extract weather data from API response
                 if (data.weather) {
                     this.weather = {
@@ -1716,44 +1706,24 @@
 
                     const ctx = canvas.getContext('2d');
                     
-                    // Use real historical data from API
+                    // Generate simulated historical data for last 48 hours
+                    const hours = 48;
                     const labels = [];
                     const data = [];
                     
-                    if (this.historicalData && this.historicalData.length > 0) {
-                        // Use real data from backend
-                        this.historicalData.forEach((point, index) => {
-                            // Parse timestamp
-                            const timestamp = new Date(point.timestamp);
-                            
-                            // Show label every 6 hours for readability
-                            if (index % 6 === 0) {
-                                labels.push(timestamp.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) + ' ' + 
-                                           timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
-                            } else {
-                                labels.push('');
-                            }
-                            
-                            data.push(point.aqi);
-                        });
-                        console.log('✓ Chart using', data.length, 'real data points');
-                    } else {
-                        // Fallback: Generate simulated data if no real data available
-                        console.warn('No historical data available, using simulated data');
-                        const hours = 48;
-                        for (let i = hours - 1; i >= 0; i--) {
-                            const date = new Date();
-                            date.setHours(date.getHours() - i);
-                            
-                            if (i % 6 === 0) {
-                                labels.push(date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) + ' ' + 
-                                           date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
-                            } else {
-                                labels.push('');
-                            }
-                            
-                            data.push(Math.round(80 + Math.random() * 100));
+                    for (let i = hours - 1; i >= 0; i--) {
+                        const date = new Date();
+                        date.setHours(date.getHours() - i);
+                        
+                        // Show label every 6 hours for readability
+                        if (i % 6 === 0) {
+                            labels.push(date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) + ' ' + 
+                                       date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
+                        } else {
+                            labels.push('');
                         }
+                        
+                        data.push(Math.round(80 + Math.random() * 100)); // Simulated data
                     }
 
                     this.historicalChart = new Chart(ctx, {

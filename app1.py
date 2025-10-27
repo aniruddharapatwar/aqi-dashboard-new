@@ -40,7 +40,7 @@ class Config:
     MODEL_PATH = BASE_DIR / "Classification_trained_models"
     DATA_PATH = BASE_DIR / "data" / "inference_data.csv"
     WHITELIST_PATH = BASE_DIR / "region_wise_popular_places_from_inference.csv"
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyCm1zTkLUYiHlvvVrOILnIDiA-Ax5hq1O0")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     
     AQI_COLORS_IN = {
         'Good': '#00E400', 'Satisfactory': '#FFFF00', 'Moderate': '#FF7E00',
@@ -393,16 +393,16 @@ def extract_weather_data(current_data: pd.DataFrame) -> Dict:
                 original_value = value
                 
                 # Convert Fahrenheit to Celsius for temperature fields
-                # If value > 50, it's likely Fahrenheit (Delhi rarely exceeds 50°C)
+                # If value > 50, it's likely Fahrenheit (Delhi rarely exceeds 50Â°C)
                 if feature in ['temperature', 'dewPoint', 'apparentTemperature'] and value > 50:
                     value = (value - 32) * 5 / 9
-                    logger.info(f"Converted {feature}: {original_value:.1f}°F → {value:.1f}°C")
+                    logger.info(f"Converted {feature}: {original_value:.1f}Â°F â†’ {value:.1f}Â°C")
                 
                 weather[feature] = value
             else:
                 weather[feature] = 0.0
     
-    logger.info(f"Weather extracted: temperature={weather.get('temperature', 0):.1f}°C, humidity={weather.get('humidity', 0):.1f}%, windSpeed={weather.get('windSpeed', 0):.1f} km/h")
+    logger.info(f"Weather extracted: temperature={weather.get('temperature', 0):.1f}Â°C, humidity={weather.get('humidity', 0):.1f}%, windSpeed={weather.get('windSpeed', 0):.1f} km/h")
     return weather
 
 def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, standard: str = 'IN'):
@@ -414,6 +414,48 @@ def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, stand
     # FIXED: Extract weather data from current row
     weather_data = extract_weather_data(current_data)
     results['weather'] = weather_data
+    
+    # NEW: Add historical AQI data (last 48 hours)
+    historical_aqi = []
+    if len(historical_data) > 0 and 'timestamp' in historical_data.columns:
+        # Get last 48 hours of data
+        historical_subset = historical_data.tail(48).copy()
+        
+        for _, row in historical_subset.iterrows():
+            # Calculate AQI from pollutant values if available
+            aqi_value = 0
+            timestamp = row.get('timestamp', '')
+            
+            # Use existing AQI if available
+            if 'AQI' in row.index and pd.notna(row['AQI']):
+                aqi_value = float(row['AQI'])
+            else:
+                # Calculate from pollutants (simple PM2.5 based)
+                if 'PM25' in row.index and pd.notna(row['PM25']):
+                    pm25 = float(row['PM25'])
+                    # PM2.5 based AQI approximation
+                    if pm25 <= 30:
+                        aqi_value = pm25 * 50 / 30
+                    elif pm25 <= 60:
+                        aqi_value = 50 + (pm25 - 30) * 50 / 30
+                    elif pm25 <= 90:
+                        aqi_value = 100 + (pm25 - 60) * 100 / 30
+                    elif pm25 <= 120:
+                        aqi_value = 200 + (pm25 - 90) * 100 / 30
+                    elif pm25 <= 250:
+                        aqi_value = 300 + (pm25 - 120) * 100 / 130
+                    else:
+                        aqi_value = 400 + (pm25 - 250) * 100 / 130
+            
+            if aqi_value > 0:  # Only add if we have valid AQI
+                historical_aqi.append({
+                    'timestamp': str(timestamp),
+                    'aqi': round(aqi_value, 1)
+                })
+        
+        logger.info(f"✓ Prepared {len(historical_aqi)} historical AQI data points")
+    
+    results['historical'] = historical_aqi
     
     for pollutant in ['PM25', 'PM10', 'NO2', 'OZONE']:
         results[pollutant] = {}
@@ -487,10 +529,9 @@ class GeminiAssistant:
             
             # Try multiple model names in order of preference
             models_to_try = [
-                'gemini-1.5-pro-latest',
-                'gemini-1.5-pro',
-                'gemini-pro',
-                'models/gemini-pro'
+                'gemini-2.5-pro',
+                'gemini-2.5-flash',
+                'gemini-2.5-flash-lite'
             ]
             
             for model_name in models_to_try:
@@ -532,22 +573,50 @@ class GeminiAssistant:
         
         try:
             # Extract user profile information
-            profile_type = user_profile.get('profile_type', '')
+            age_category = user_profile.get('age_category', '')
+            health_category = user_profile.get('health_category', '')
+            gender = user_profile.get('gender', '')
             profile_label = user_profile.get('profile_label', 'general public')
             
-            # Build profile context
+            # Build profile context with detailed breakdown
             profile_context = ""
-            if profile_type:
-                profile_guidance = {
-                    'child': 'Children are highly sensitive to air pollution. Lungs are still developing. Extra precautions needed.',
-                    'teenager': 'Teenagers are active and breathe more air. Caution during sports/outdoor activities.',
-                    'elderly': 'Elderly persons have weaker immune systems and existing health conditions. High risk group.',
-                    'pregnant': 'Pregnant women need special care - pollution affects both mother and baby. Avoid exposure.',
-                    'asthma': 'Asthma patients are extremely sensitive to air pollution. Even low pollution can trigger attacks.',
-                    'heart_condition': 'Heart patients at high risk from air pollution. Can trigger cardiac events.',
-                    'respiratory': 'People with respiratory issues highly vulnerable. Avoid outdoor exposure during poor AQI.'
+            profile_parts = []
+            
+            if age_category or health_category or gender:
+                age_guidance = {
+                    'child': 'Children have developing lungs and breathe more air relative to body weight. Extra sensitive to pollution.',
+                    'teenager': 'Teenagers are active and breathe more air during sports/activities. Monitor for symptoms.',
+                    'adult': 'Adults should take standard precautions based on AQI levels.',
+                    'elderly': 'Elderly persons have weaker immune systems and may have existing conditions. High risk group.'
                 }
-                profile_context = f"\n\nIMPORTANT: User is {profile_label}. {profile_guidance.get(profile_type, '')} Tailor your advice specifically for this group."
+                
+                health_guidance = {
+                    'asthma': 'Asthma patients extremely sensitive - even low pollution can trigger attacks. Keep rescue inhaler ready.',
+                    'heart_condition': 'Heart patients at high risk - pollution can trigger cardiac events. Avoid exertion in poor air.',
+                    'respiratory': 'Respiratory issues make them highly vulnerable. Avoid outdoor exposure during poor AQI.',
+                    'copd': 'COPD patients must take extreme caution - pollution can cause severe exacerbations.',
+                    'diabetes': 'Diabetics may have increased inflammation from pollution. Monitor blood sugar and avoid exposure.',
+                    'pregnant': 'Pregnancy requires special care - pollution affects both mother and baby. Minimize exposure.'
+                }
+                
+                gender_context = {
+                    'female': 'Women may experience different health impacts from air pollution.',
+                    'male': 'Men should be aware of cardiovascular risks from pollution exposure.'
+                }
+                
+                if age_category:
+                    profile_parts.append(age_guidance.get(age_category, ''))
+                
+                if health_category:
+                    profile_parts.append(health_guidance.get(health_category, ''))
+                
+                if gender and gender in gender_context:
+                    profile_parts.append(gender_context[gender])
+                
+                if profile_parts:
+                    profile_context = f"\n\nIMPORTANT: User profile is {profile_label}. "
+                    profile_context += " ".join(profile_parts)
+                    profile_context += " Tailor your advice specifically for this profile."
             
             # FIXED: Add weather context
             weather_context = ""
@@ -555,7 +624,7 @@ class GeminiAssistant:
                 temp = weather_data.get('temperature', 0)
                 humidity = weather_data.get('humidity', 0)
                 wind = weather_data.get('windSpeed', 0)
-                weather_context = f"\n\nWeather Conditions:\n- Temperature: {temp:.1f}°C\n- Humidity: {humidity:.1f}%\n- Wind Speed: {wind:.1f} km/h"
+                weather_context = f"\n\nWeather Conditions:\n- Temperature: {temp:.1f}Â°C\n- Humidity: {humidity:.1f}%\n- Wind Speed: {wind:.1f} km/h"
             
             prompt = f"""You are an expert AQI health advisor for Delhi NCR, providing personalized air quality advice.
 
@@ -622,22 +691,33 @@ Provide your response:"""
         if weather and weather.get('temperature', 0) > 0:
             temp = weather.get('temperature', 0)
             humidity = weather.get('humidity', 0)
-            response += f" Current temperature is {temp:.1f}°C with {humidity:.1f}% humidity."
+            response += f" Current temperature is {temp:.1f}Â°C with {humidity:.1f}% humidity."
         
-        # Add profile-specific advice
+        # Add profile-specific advice based on new structure
         if user_profile:
-            profile_type = user_profile.get('profile_type', '')
-            profile_advice = {
+            age_category = user_profile.get('age_category', '')
+            health_category = user_profile.get('health_category', '')
+            
+            age_advice = {
                 'child': " Children should avoid outdoor play during poor air quality.",
                 'elderly': " Elderly persons should take extra precautions and stay indoors.",
+                'teenager': " Teenagers should avoid intensive outdoor sports during poor AQI."
+            }
+            
+            health_advice = {
                 'pregnant': " Pregnant women should minimize outdoor exposure to protect the baby.",
                 'asthma': " Asthma patients should keep rescue inhalers ready and avoid triggers.",
                 'heart_condition': " Heart patients should avoid physical exertion outdoors.",
-                'respiratory': " Those with respiratory issues should use air purifiers indoors."
+                'respiratory': " Those with respiratory issues should use air purifiers indoors.",
+                'copd': " COPD patients must stay indoors and use supplemental oxygen if needed.",
+                'diabetes': " Diabetics should monitor blood sugar and limit outdoor exposure."
             }
             
-            if profile_type in profile_advice:
-                response += profile_advice[profile_type]
+            if age_category in age_advice:
+                response += age_advice[age_category]
+            
+            if health_category in health_advice:
+                response += health_advice[health_category]
         
         return response
 
