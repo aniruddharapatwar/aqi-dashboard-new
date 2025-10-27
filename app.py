@@ -40,7 +40,7 @@ class Config:
     MODEL_PATH = BASE_DIR / "Classification_trained_models"
     DATA_PATH = BASE_DIR / "data" / "inference_data.csv"
     WHITELIST_PATH = BASE_DIR / "region_wise_popular_places_from_inference.csv"
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyCm1zTkLUYiHlvvVrOILnIDiA-Ax5hq1O0")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     
     AQI_COLORS_IN = {
         'Good': '#00E400', 'Satisfactory': '#FFFF00', 'Moderate': '#FF7E00',
@@ -414,6 +414,48 @@ def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, stand
     # FIXED: Extract weather data from current row
     weather_data = extract_weather_data(current_data)
     results['weather'] = weather_data
+    
+    # NEW: Add historical AQI data (last 48 hours)
+    historical_aqi = []
+    if len(historical_data) > 0 and 'timestamp' in historical_data.columns:
+        # Get last 48 hours of data
+        historical_subset = historical_data.tail(48).copy()
+        
+        for _, row in historical_subset.iterrows():
+            # Calculate AQI from pollutant values if available
+            aqi_value = 0
+            timestamp = row.get('timestamp', '')
+            
+            # Use existing AQI if available
+            if 'AQI' in row.index and pd.notna(row['AQI']):
+                aqi_value = float(row['AQI'])
+            else:
+                # Calculate from pollutants (simple PM2.5 based)
+                if 'PM25' in row.index and pd.notna(row['PM25']):
+                    pm25 = float(row['PM25'])
+                    # PM2.5 based AQI approximation
+                    if pm25 <= 30:
+                        aqi_value = pm25 * 50 / 30
+                    elif pm25 <= 60:
+                        aqi_value = 50 + (pm25 - 30) * 50 / 30
+                    elif pm25 <= 90:
+                        aqi_value = 100 + (pm25 - 60) * 100 / 30
+                    elif pm25 <= 120:
+                        aqi_value = 200 + (pm25 - 90) * 100 / 30
+                    elif pm25 <= 250:
+                        aqi_value = 300 + (pm25 - 120) * 100 / 130
+                    else:
+                        aqi_value = 400 + (pm25 - 250) * 100 / 130
+            
+            if aqi_value > 0:  # Only add if we have valid AQI
+                historical_aqi.append({
+                    'timestamp': str(timestamp),
+                    'aqi': round(aqi_value, 1)
+                })
+        
+        logger.info(f"✓ Prepared {len(historical_aqi)} historical AQI data points")
+    
+    results['historical'] = historical_aqi
     
     for pollutant in ['PM25', 'PM10', 'NO2', 'OZONE']:
         results[pollutant] = {}
