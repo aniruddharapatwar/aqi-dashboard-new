@@ -197,6 +197,16 @@
             animation: fadeIn 0.3s ease-out;
         }
         
+        /* Validation Warning Badge */
+        .validation-warning {
+            background: rgba(251, 191, 36, 0.1);
+            border-left: 3px solid #f59e0b;
+            padding: 0.5rem;
+            margin-top: 0.5rem;
+            border-radius: 0.5rem;
+            font-size: 0.75rem;
+        }
+        
         /* Scrollbar Styling */
         .custom-scrollbar::-webkit-scrollbar {
             width: 6px;
@@ -367,7 +377,7 @@
                             <h1 class="text-3xl font-black text-gray-900 tracking-tight">
                                 AQI Dashboard
                             </h1>
-                            <p class="text-sm text-gray-600 font-medium">Delhi NCR • Real-time Air Quality Monitoring</p>
+                            <p class="text-sm text-gray-600 font-medium">Delhi NCR • Real-time Air Quality Monitoring v2.0</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
@@ -632,7 +642,7 @@
             <template x-if="predictions && !loading">
                 <div class="space-y-8 fade-in">
                     
-                    <!-- AQI Hero Section - MOVED HERE AFTER CONFIGURATION -->
+                    <!-- AQI Hero Section -->
                     <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
                         <!-- Large AQI Display -->
                         <div class="lg:col-span-2">
@@ -755,7 +765,7 @@
                                 <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                 </svg>
-                                Best Time for Outdoor Activities (Preview)
+                                Best Time for Outdoor Activities
                             </h3>
                             <div class="space-y-3">
                                 <div class="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border-2 border-green-200">
@@ -803,77 +813,6 @@
                         </div>
                     </div>
 
-                    <!-- Comparison Mode -->
-                    <div x-show="compareMode" class="glass-card rounded-3xl p-8 shadow-xl">
-                        <div class="flex items-center justify-between mb-6">
-                            <h3 class="text-xl font-bold text-gray-900 flex items-center gap-2">
-                                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                                </svg>
-                                Compare Locations
-                            </h3>
-                            <button @click="compareMode = false" class="text-gray-500 hover:text-gray-700">
-                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                                </svg>
-                            </button>
-                        </div>
-                        
-                        <div class="mb-6">
-                            <label class="block text-sm font-bold text-gray-700 mb-3">Add locations to compare:</label>
-                            <div class="flex gap-3">
-                                <select x-model="compareLocation" class="flex-1 px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all text-sm font-medium">
-                                    <option value="">Select a location...</option>
-                                    <template x-for="loc in locations" :key="loc">
-                                        <option :value="loc" x-text="loc" :disabled="compareLocations.includes(loc) || loc === selectedLocation"></option>
-                                    </template>
-                                </select>
-                                <button @click="addCompareLocation()" :disabled="!compareLocation" 
-                                        class="px-6 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                                    Add
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div class="compare-grid">
-                            <!-- Current Location -->
-                            <div class="glass-card rounded-2xl p-6 border-4 border-blue-500">
-                                <div class="flex items-center justify-between mb-4">
-                                    <h4 class="font-bold text-gray-900" x-text="selectedLocation"></h4>
-                                    <span class="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">Current</span>
-                                </div>
-                                <div class="text-4xl font-black mb-2" 
-                                     :style="'color: ' + getAQIColor(predictions.overall[horizon]?.category)"
-                                     x-text="Math.round(predictions.overall[horizon]?.aqi_mid)"></div>
-                                <div class="text-sm font-semibold text-gray-600" x-text="predictions.overall[horizon]?.category?.replace('_', ' ')"></div>
-                            </div>
-                            
-                            <!-- Compare Locations -->
-                            <template x-for="(loc, index) in compareLocations" :key="loc">
-                                <div class="glass-card rounded-2xl p-6 relative">
-                                    <button @click="removeCompareLocation(index)" 
-                                            class="absolute top-3 right-3 text-gray-400 hover:text-red-500">
-                                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
-                                        </svg>
-                                    </button>
-                                    <h4 class="font-bold text-gray-900 mb-4" x-text="loc"></h4>
-                                    <template x-if="compareData[loc]">
-                                        <div>
-                                            <div class="text-4xl font-black mb-2" 
-                                                 :style="'color: ' + getAQIColor(compareData[loc]?.overall[horizon]?.category)"
-                                                 x-text="Math.round(compareData[loc]?.overall[horizon]?.aqi_mid)"></div>
-                                            <div class="text-sm font-semibold text-gray-600" x-text="compareData[loc]?.overall[horizon]?.category?.replace('_', ' ')"></div>
-                                        </div>
-                                    </template>
-                                    <template x-if="!compareData[loc]">
-                                        <div class="skeleton h-20 w-full"></div>
-                                    </template>
-                                </div>
-                            </template>
-                        </div>
-                    </div>
-
                     <!-- Historical Data View -->
                     <div class="glass-card rounded-3xl p-8 shadow-xl">
                         <h3 class="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
@@ -887,7 +826,7 @@
                         </div>
                     </div>
 
-                    <!-- AI Assistant -->
+                    <!-- AI Assistant - ENHANCED WITH VALIDATION DISPLAY -->
                     <div class="glass-card rounded-3xl shadow-xl overflow-hidden">
                         <!-- Header -->
                         <div class="gradient-primary p-6">
@@ -897,19 +836,19 @@
                                 </div>
                                 <div class="flex-1">
                                     <h2 class="text-2xl font-black text-white">AI Health Assistant</h2>
-                                    <p class="text-white/90 text-sm font-medium">Get personalized air quality advice</p>
+                                    <p class="text-white/90 text-sm font-medium">Personalized air quality advice with safety validation</p>
                                 </div>
                             </div>
                         </div>
 
                         <div class="p-6 space-y-6">
-                            <!-- Profile Selector - 3 Dropdowns -->
+                            <!-- Profile Selector -->
                             <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-100">
                                 <div class="flex items-center gap-2 mb-4">
                                     <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                                     </svg>
-                                    <h3 class="text-sm font-bold text-gray-900">Your Profile</h3>
+                                    <h3 class="text-sm font-bold text-gray-900">Your Profile (For Personalized Advice)</h3>
                                 </div>
                                 
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -973,7 +912,26 @@
                                                 <div class="text-xs font-bold mb-2 opacity-80"
                                                      x-text="msg.role === 'user' ? 'You' : '🤖 AI Assistant'">
                                                 </div>
-                                                <div class="text-sm leading-relaxed whitespace-pre-wrap" x-text="msg.content"></div>
+                                                <div class="text-sm leading-relaxed whitespace-pre-wrap" x-html="formatResponse(msg.content)"></div>
+                                                
+                                                <!-- Validation Warnings (only for assistant messages) -->
+                                                <template x-if="msg.role === 'assistant' && msg.validation && msg.validation.warnings && msg.validation.warnings.length > 0">
+                                                    <div class="validation-warning mt-3">
+                                                        <div class="flex items-start gap-2">
+                                                            <svg class="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                                            </svg>
+                                                            <div>
+                                                                <p class="text-yellow-800 font-semibold">Response Validation Notes:</p>
+                                                                <ul class="text-yellow-700 list-disc list-inside mt-1">
+                                                                    <template x-for="warning in msg.validation.warnings" :key="warning">
+                                                                        <li x-text="warning"></li>
+                                                                    </template>
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </template>
                                             </div>
                                         </div>
                                     </template>
@@ -1006,7 +964,7 @@
                                         class="btn-primary px-8 py-4 text-white font-bold rounded-2xl shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                                         aria-label="Send message">
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
                                     </svg>
                                 </button>
                             </div>
@@ -1023,7 +981,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
                     </div>
-                    <h2 class="text-3xl font-black text-white mb-3">Welcome to AQI Dashboard</h2>
+                    <h2 class="text-3xl font-black text-white mb-3">Welcome to AQI Dashboard v2.0</h2>
                     <p class="text-xl text-white/80 font-medium">Select a region and location to begin monitoring</p>
                 </div>
             </template>
@@ -1031,7 +989,7 @@
 
         <!-- Footer -->
         <footer class="mt-16 pb-8 text-center text-white/60 text-sm">
-            <p>Â© 2025 AQI Dashboard. Powered by AI. Data for informational purposes only.</p>
+            <p>© 2025 AQI Dashboard v2.0. Enhanced AI with Safety Validation. Data for informational purposes only.</p>
         </footer>
     </div>
 
@@ -1047,7 +1005,7 @@
                 horizons: ['1h', '6h', '12h', '24h'],
                 standard: 'IN',
                 predictions: null,
-                historicalData: [],  // Store real historical data
+                historicalData: [],
                 loading: false,
                 userProfile: {
                     ageCategory: '',
@@ -1055,7 +1013,7 @@
                     gender: ''
                 },
                 messages: [
-                    { role: 'assistant', content: '👋 Hello! I\'m your AI air quality assistant. Select your profile above and ask me about current air quality, health advice, or pollutant risks!' }
+                    { role: 'assistant', content: '👋 Hello! I\'m your enhanced AI air quality assistant with safety validation. Select your profile above and ask me about current air quality, health advice, or pollutant risks!' }
                 ],
                 userInput: '',
                 isTyping: false,
@@ -1066,7 +1024,7 @@
                     { key: 'OZONE', name: 'O₃', description: 'Ground-level ozone from reactions' }
                 ],
                 
-                // New features
+                // Features
                 darkMode: false,
                 compareMode: false,
                 compareLocation: '',
@@ -1084,25 +1042,20 @@
                     message: ''
                 },
                 
-                // Weather data (simulated)
                 weather: {
-                    temperature: 28,
-                    humidity: 65,
-                    windSpeed: 12
+                    temperature: 0,
+                    humidity: 0,
+                    windSpeed: 0
                 },
                 
-                // Best time data
                 bestTime: {
-                    period: 'Early Morning (5 AM - 7 AM)',
-                    aqi: 85,
-                    category: 'Satisfactory',
-                    recommendation: 'Best time for outdoor exercise and activities. Air quality is at its best during these hours.'
+                    period: 'Loading...',
+                    aqi: 0,
+                    category: 'Loading',
+                    recommendation: 'Please wait while we analyze the data...'
                 },
                 
-                // Health recommendations
                 healthRecommendations: [],
-                
-                // Charts
                 historicalChart: null,
 
                 async init() {
@@ -1222,8 +1175,8 @@
                     if (this.notificationsEnabled && Notification.permission === 'granted') {
                         new Notification(title, {
                             body: body,
-                            icon: 'â˜ï¸',
-                            badge: 'â˜ï¸'
+                            icon: '☁️',
+                            badge: '☁️'
                         });
                     }
                 },
@@ -1238,22 +1191,18 @@
                 // Keyboard Shortcuts
                 setupKeyboardShortcuts() {
                     document.addEventListener('keydown', (e) => {
-                        // R - Refresh
                         if (e.key === 'r' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
                             e.preventDefault();
                             this.refreshData();
                         }
-                        // D - Dark Mode
                         if (e.key === 'd' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
                             e.preventDefault();
                             this.toggleDarkMode();
                         }
-                        // C - Compare Mode
                         if (e.key === 'c' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
                             e.preventDefault();
                             this.compareMode = !this.compareMode;
                         }
-                        // 1-4 - Forecast periods
                         if (['1', '2', '3', '4'].includes(e.key) && document.activeElement.tagName !== 'INPUT') {
                             e.preventDefault();
                             const index = parseInt(e.key) - 1;
@@ -1421,39 +1370,28 @@
                         const data = await response.json();
                         this.predictions = data;
                         
-                        // Store historical data if available
                         if (data.historical && Array.isArray(data.historical)) {
                             this.historicalData = data.historical;
                             console.log('✓ Loaded', this.historicalData.length, 'historical data points');
                         } else {
-                            console.warn('No historical data in API response');
                             this.historicalData = [];
                         }
                         
-                        // FIXED: Extract weather data from API response
-                if (data.weather) {
-                    this.weather = {
-                        temperature: Math.round(data.weather.temperature || 0),
-                        humidity: Math.round(data.weather.humidity || 0),
-                        windSpeed: Math.round(data.weather.windSpeed || 0)
-                    };
-                    console.log('Weather data loaded:', this.weather);
-                } else {
-                    console.warn('No weather data in API response');
-                }
+                        if (data.weather) {
+                            this.weather = {
+                                temperature: Math.round(data.weather.temperature || 0),
+                                humidity: Math.round(data.weather.humidity || 0),
+                                windSpeed: Math.round(data.weather.windSpeed || 0)
+                            };
+                        }
                         
-                        // Calculate best time from predictions
                         this.calculateBestTime();
-                        
-                        // Update health recommendations
                         this.updateHealthRecommendations();
                         
-                        // Update charts
                         setTimeout(() => {
                             this.createCharts();
                         }, 100);
                         
-                        // Check for alerts
                         this.checkAQIAlerts();
                         
                     } catch (error) {
@@ -1464,7 +1402,6 @@
                     }
                 },
 
-                // Calculate best time from AQI predictions
                 calculateBestTime() {
                     if (!this.predictions || !this.predictions.overall) return;
                     
@@ -1475,7 +1412,6 @@
                         '24h': { label: 'Next 24 Hours (Tomorrow)', hours: 24 }
                     };
                     
-                    // Find horizon with lowest AQI
                     let bestHorizon = null;
                     let lowestAQI = Infinity;
                     
@@ -1490,10 +1426,7 @@
                         const bestData = this.predictions.overall[bestHorizon];
                         const horizonInfo = horizonMap[bestHorizon];
                         
-                        // Calculate time period
                         const now = new Date();
-                        const futureTime = new Date(now.getTime() + horizonInfo.hours * 60 * 60 * 1000);
-                        
                         let timePeriod = horizonInfo.label;
                         if (bestHorizon === '1h') {
                             timePeriod = `${now.getHours()}:00 - ${(now.getHours() + 1) % 24}:00`;
@@ -1508,7 +1441,6 @@
                             timePeriod = `Tomorrow (${tomorrow.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })})`;
                         }
                         
-                        // Generate recommendation based on AQI
                         let recommendation = '';
                         if (lowestAQI <= 50) {
                             recommendation = 'Excellent air quality! Perfect time for all outdoor activities including exercise and sports.';
@@ -1532,30 +1464,127 @@
                     }
                 },
 
+                formatResponse(text, role = 'assistant') {
+                    if (!text) return '';
+                    
+                    // For user messages, just return the text with basic HTML escaping and line breaks
+                    if (role === 'user') {
+                        // AGGRESSIVELY remove any disclaimer from user messages
+                        // Remove with emoji
+                        text = text.replace(/⚠️\s*\*\*Important:\*\*.*/gi, '');
+                        text = text.replace(/⚠️\s*Important:.*/gi, '');
+                        // Remove without emoji
+                        text = text.replace(/\*\*Important:\*\*.*/gi, '');
+                        text = text.replace(/Important:\s*This is not medical advice.*/gi, '');
+                        // Remove just the sentence
+                        text = text.replace(/This is not medical advice.*/gi, '');
+                        text = text.replace(/Please consult a healthcare professional.*/gi, '');
+                        // Remove any HTML formatted versions
+                        text = text.replace(/<div[^>]*yellow[^>]*>.*?<\/div>/gis, '');
+                        text = text.replace(/<div[^>]*Important[^>]*>.*?<\/div>/gis, '');
+                        
+                        // Basic formatting only
+                        text = text.replace(/\n/g, '<br>');
+                        return text.trim();
+                    }
+                    
+                    // For assistant messages, apply full formatting
+                    const originalText = text;
+                    
+                    // Check if response has structured format (section headers)
+                    const hasStructure = /\*\*(?:Current Situation|Your Risk Level|Recommended Actions):\*\*/i.test(text);
+                    
+                    // 1. Convert **bold** to <strong>
+                    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+                    
+                    // 2. Handle section headers with special styling
+                    text = text.replace(/<strong>(Current Situation|Your Risk Level|Recommended Actions|Weather):<\/strong>/gi, 
+                        '<div class="font-bold text-base mt-4 mb-2 text-blue-600">$1:</div>');
+                    
+                    // 3. Handle list items with various markers (remove emojis)
+                    text = text.replace(/^[\s]*([•✓✅🚨⚠️🛑🔴🏠😷💊📞👨‍👩‍👧🚶‍♂️🤰👴👶🫁❤️*✔️⛔🚫💨-]|\d+\.)\s+(.+)$/gm, (match, marker, content) => {
+                        return `<li class="ml-2">${content.trim()}</li>`;
+                    });
+                    
+                    // 4. Wrap consecutive <li> elements in <ul>
+                    text = text.replace(/(<li class="ml-2">.*?<\/li>\s*)+/gs, (match) => {
+                        return `<ul class="space-y-2 mt-2 mb-4">${match}</ul>`;
+                    });
+                    
+                    // 5. If no structure detected, intelligently add structure (no emojis)
+                    if (!hasStructure && !text.includes('<ul>')) {
+                        const sentences = originalText.split(/\.\s+/);
+                        
+                        if (sentences.length > 3) {
+                            let structured = '<div class="font-bold text-base mt-2 mb-2 text-blue-600">Current Situation & Recommendations:</div>';
+                            structured += '<ul class="space-y-2 mt-2 mb-4">';
+                            
+                            sentences.forEach((sentence, idx) => {
+                                if (sentence.trim() && !sentence.includes('Important:') && !sentence.includes('medical advice')) {
+                                    structured += `<li class="ml-2">${sentence.trim()}${sentence.trim().endsWith('.') ? '' : '.'}</li>`;
+                                }
+                            });
+                            
+                            structured += '</ul>';
+                            text = structured;
+                        }
+                    }
+                    
+                    // 6. Handle paragraphs - convert double line breaks
+                    text = text.replace(/\n\n+/g, '</p><p class="mt-3">');
+                    
+                    // 7. Convert remaining single line breaks to <br>
+                    text = text.replace(/\n/g, '<br>');
+                    
+                    // 8. Wrap in paragraph if needed
+                    if (!text.startsWith('<div') && !text.startsWith('<ul') && !text.startsWith('<p>')) {
+                        text = '<p class="mb-3">' + text + '</p>';
+                    }
+                    
+                    // 9. Clean up empty paragraphs
+                    text = text.replace(/<p[^>]*><\/p>/g, '');
+                    text = text.replace(/<br\s*\/?>\s*<br\s*\/?>/g, '<br>');
+                    
+                    // 10. Remove ALL disclaimers completely (ONLY for assistant)
+                    // AGGRESSIVELY remove ANY existing disclaimer in ANY format
+                    text = text.replace(/⚠️\s*\*\*Important:\*\*.*/gis, '');
+                    text = text.replace(/⚠️\s*<strong>Important:<\/strong>.*/gis, '');
+                    text = text.replace(/<strong>Important:<\/strong>.*/gis, '');
+                    text = text.replace(/\*\*Important:\*\*.*/gis, '');
+                    text = text.replace(/Important:\s*This is not medical advice.*/gis, '');
+                    text = text.replace(/This is not medical advice.*/gis, '');
+                    text = text.replace(/Please consult a healthcare professional.*/gis, '');
+                    text = text.replace(/<div[^>]*yellow[^>]*>.*?<\/div>/gis, '');
+                    text = text.replace(/<div[^>]*bg-yellow[^>]*>.*?<\/div>/gis, '');
+                    text = text.replace(/<br>\s*⚠️.*/gis, '');
+                    
+                    // Clean up any trailing breaks and empty paragraphs
+                    text = text.replace(/(<br\s*\/?>)+\s*$/g, '');
+                    text = text.replace(/\s*<\/p>\s*$/g, '</p>');
+                    text = text.replace(/<p[^>]*>\s*<\/p>/g, '');
+                    
+                    // NO DISCLAIMER - removed completely
+                    
+                    return text;
+                },
+
                 async sendMessage() {
                     console.log('📤 Send message called');
-                    console.log('User input:', this.userInput);
                     
                     if (!this.userInput.trim()) {
-                        console.log('⚠️ Empty input, returning');
                         return;
                     }
                     
-                    // Check if location is selected
                     if (!this.selectedLocation) {
-                        console.log('⚠️ No location selected');
                         alert('Please select a region and location first to get personalized air quality advice.');
                         return;
                     }
-                    
-                    console.log('✓ Location selected:', this.selectedLocation);
                     
                     this.messages.push({ role: 'user', content: this.userInput });
                     const userMessage = this.userInput;
                     this.userInput = '';
                     this.isTyping = true;
                     
-                    // Scroll to bottom
                     setTimeout(() => {
                         const container = this.$refs.chatContainer;
                         if (container) {
@@ -1564,16 +1593,12 @@
                     }, 100);
                     
                     try {
-                        // Build aqi_data object
                         let aqiData = null;
                         if (this.predictions && this.predictions.overall && this.predictions.overall[this.horizon]) {
                             aqiData = {
                                 ...this.predictions.overall[this.horizon],
                                 weather: this.weather
                             };
-                            console.log('✓ AQI data prepared:', aqiData);
-                        } else {
-                            console.log('⚠️ No predictions data available');
                         }
                         
                         const requestBody = {
@@ -1589,7 +1614,6 @@
                         };
                         
                         console.log('📡 Sending request to:', `${this.API_URL}/chat`);
-                        console.log('📦 Request body:', requestBody);
                         
                         const response = await fetch(`${this.API_URL}/chat`, {
                             method: 'POST',
@@ -1597,29 +1621,38 @@
                             body: JSON.stringify(requestBody)
                         });
                         
-                        console.log('📥 Response status:', response.status);
-                        
                         if (!response.ok) {
                             const errorText = await response.text();
-                            console.error('❌ HTTP error:', response.status, errorText);
+                            console.error('⚠ HTTP error:', response.status, errorText);
                             throw new Error(`HTTP ${response.status}: ${errorText}`);
                         }
                         
                         const data = await response.json();
                         console.log('✓ Response received:', data);
                         
-                        this.messages.push({ role: 'assistant', content: data.response });
-                        console.log('✓ Message added to chat');
-                    } catch (error) {
-                        console.error('❌ Error sending message:', error);
+                        // Add message with validation info
                         this.messages.push({ 
                             role: 'assistant', 
-                            content: `Sorry, I encountered an error: ${error.message}. Please check the console for details.` 
+                            content: data.response,
+                            validation: data.validation || {}
+                        });
+                        
+                        // Show notification if there were validation warnings
+                        if (data.validation && data.validation.warnings && data.validation.warnings.length > 0) {
+                            this.showNotification('info', 'Response Validated', 
+                                `${data.validation.warnings.length} validation note(s) - see chat for details`);
+                        }
+                        
+                    } catch (error) {
+                        console.error('⚠ Error sending message:', error);
+                        this.messages.push({ 
+                            role: 'assistant', 
+                            content: `Sorry, I encountered an error: ${error.message}. Please try again or contact support if the issue persists.`,
+                            validation: { valid: false, warnings: ['Error occurred'] }
                         });
                     } finally {
                         this.isTyping = false;
                         
-                        // Scroll to bottom
                         setTimeout(() => {
                             const container = this.$refs.chatContainer;
                             if (container) {
@@ -1629,12 +1662,10 @@
                     }
                 },
 
-                // Health Recommendations
                 updateHealthRecommendations() {
                     if (!this.predictions) return;
                     
                     const aqi = Math.round(this.predictions.overall[this.horizon]?.aqi_mid);
-                    const category = this.predictions.overall[this.horizon]?.category;
                     
                     this.healthRecommendations = [];
                     
@@ -1665,12 +1696,10 @@
                     }
                 },
 
-                // AQI Alerts
                 checkAQIAlerts() {
                     if (!this.predictions || !this.notificationsEnabled) return;
                     
                     const aqi = Math.round(this.predictions.overall[this.horizon]?.aqi_mid);
-                    const category = this.predictions.overall[this.horizon]?.category;
                     
                     if (aqi > 200) {
                         this.sendBrowserNotification(
@@ -1685,7 +1714,6 @@
                     }
                 },
 
-                // Helper Functions
                 isAQISevere() {
                     if (!this.predictions) return false;
                     const aqi = Math.round(this.predictions.overall[this.horizon]?.aqi_mid);
@@ -1698,7 +1726,6 @@
                     return aqi <= 50;
                 },
 
-                // Chart Creation
                 createCharts() {
                     this.createHistoricalChart();
                 },
@@ -1707,24 +1734,19 @@
                     const canvas = document.getElementById('historicalChart');
                     if (!canvas) return;
 
-                    // Destroy existing chart
                     if (this.historicalChart) {
                         this.historicalChart.destroy();
                     }
 
                     const ctx = canvas.getContext('2d');
                     
-                    // Use real historical data from API
                     const labels = [];
                     const data = [];
                     
                     if (this.historicalData && this.historicalData.length > 0) {
-                        // Use real data from backend
                         this.historicalData.forEach((point, index) => {
-                            // Parse timestamp
                             const timestamp = new Date(point.timestamp);
                             
-                            // Show label every 6 hours for readability
                             if (index % 6 === 0) {
                                 labels.push(timestamp.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) + ' ' + 
                                            timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
@@ -1734,10 +1756,7 @@
                             
                             data.push(point.aqi);
                         });
-                        console.log('✓ Chart using', data.length, 'real data points');
                     } else {
-                        // Fallback: Generate simulated data if no real data available
-                        console.warn('No historical data available, using simulated data');
                         const hours = 48;
                         for (let i = hours - 1; i >= 0; i--) {
                             const date = new Date();

@@ -1,7 +1,7 @@
 """
-AQI Dashboard - FastAPI Backend (COMPLETE FIXED VERSION)
+AQI Dashboard - FastAPI Backend (ENHANCED VERSION)
 Complete REST API for air quality predictions and AI assistance
-FIXES: Gemini integration + Weather data extraction + dotenv loading
+IMPROVEMENTS: Better Gemini prompts, validation, guardrails, safety checks
 """
 
 from fastapi import FastAPI, HTTPException, Request
@@ -15,8 +15,9 @@ from pathlib import Path
 import logging
 import json
 import os
+import re
 
-# 🔧 CRITICAL FIX: Load environment variables from .env file
+# ðŸ”§ Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -73,7 +74,7 @@ class ChatRequest(BaseModel):
 app = FastAPI(
     title="AQI Dashboard API",
     description="Air Quality Index Prediction and Advisory System",
-    version="1.0.0"
+    version="2.0.0"
 )
 
 # CORS middleware
@@ -86,13 +87,13 @@ app.add_middleware(
 )
 
 # ============================================================================
-# DATA MANAGER - FIXED VERSION
+# DATA MANAGER
 # ============================================================================
 
 class DataManager:
     def __init__(self):
-        self.data = self.load_data()  # Load data FIRST
-        self.whitelist = self.load_whitelist()  # Then whitelist
+        self.data = self.load_data()
+        self.whitelist = self.load_whitelist()
         self.models = {}
     
     def load_data(self):
@@ -121,9 +122,7 @@ class DataManager:
                 raise ValueError("Data must have 'lat' and 'lon' columns")
             
             df = df.sort_values(['lat', 'lon', 'timestamp'])
-            logger.info(f"✓ Loaded {len(df)} data rows")
-            
-            # Log available columns for debugging
+            logger.info(f"âœ“ Loaded {len(df)} data rows")
             logger.info(f"Available columns: {list(df.columns)}")
             
             return df
@@ -148,11 +147,10 @@ class DataManager:
                         'pin': row.get('PIN Code', ''),
                         'area': row.get('Area/Locality', row['Place'])
                     }
-                logger.info(f"✓ Loaded {len(whitelist)} locations from whitelist")
+                logger.info(f"âœ“ Loaded {len(whitelist)} locations from whitelist")
             
             # Add locations from actual data
             if len(self.data) > 0 and 'location' in self.data.columns:
-                # Get unique locations with their coordinates
                 location_groups = self.data.groupby(['lat', 'lon']).agg({
                     'location': 'first',
                     'pincode': lambda x: x.dropna().iloc[0] if len(x.dropna()) > 0 else '',
@@ -163,7 +161,6 @@ class DataManager:
                 for _, row in location_groups.iterrows():
                     loc_name = row['location']
                     if pd.notna(loc_name) and str(loc_name).strip():
-                        # Use actual coordinates from data
                         whitelist[loc_name] = {
                             'region': row['region'] if pd.notna(row['region']) else 'Central Delhi',
                             'lat': row['lat'],
@@ -173,7 +170,7 @@ class DataManager:
                         }
                         added += 1
                 
-                logger.info(f"✓ Added {added} locations from actual data")
+                logger.info(f"âœ“ Added {added} locations from actual data")
             
             if len(whitelist) == 0:
                 logger.error("No locations loaded!")
@@ -205,7 +202,7 @@ class DataManager:
         
         logger.info(f"Searching data for {location_name} at ({lat}, {lon})")
         
-        # Use exact coordinates from whitelist (which now matches data)
+        # Use exact coordinates from whitelist
         mask = ((np.abs(self.data['lat'] - lat) < 0.0001) & 
                (np.abs(self.data['lon'] - lon) < 0.0001))
         loc_data = self.data[mask].copy()
@@ -218,7 +215,6 @@ class DataManager:
             loc_data = self.data[mask].copy()
         
         if len(loc_data) == 0:
-            # Even wider search
             mask = ((np.abs(self.data['lat'] - lat) < 0.05) & 
                    (np.abs(self.data['lon'] - lon) < 0.05))
             loc_data = self.data[mask].copy()
@@ -226,11 +222,10 @@ class DataManager:
         if len(loc_data) == 0:
             raise ValueError(f"No data found for {location_name} at ({lat}, {lon})")
         
-        logger.info(f"✓ Found {len(loc_data)} data rows for {location_name}")
+        logger.info(f"âœ“ Found {len(loc_data)} data rows for {location_name}")
         
         loc_data = loc_data.sort_values('timestamp')
         
-        # Return most recent row as current, last 96 as historical
         return loc_data.iloc[[-1]].copy(), loc_data.tail(96).copy()
     
     def load_model(self, pollutant: str, horizon: str):
@@ -393,7 +388,6 @@ def extract_weather_data(current_data: pd.DataFrame) -> Dict:
                 original_value = value
                 
                 # Convert Fahrenheit to Celsius for temperature fields
-                # If value > 50, it's likely Fahrenheit (Delhi rarely exceeds 50Â°C)
                 if feature in ['temperature', 'dewPoint', 'apparentTemperature'] and value > 50:
                     value = (value - 32) * 5 / 9
                     logger.info(f"Converted {feature}: {original_value:.1f}Â°F â†’ {value:.1f}Â°C")
@@ -409,31 +403,25 @@ def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, stand
     results = {}
     
     logger.info(f"Current data shape: {current_data.shape}, Historical: {historical_data.shape}")
-    logger.info(f"Available columns: {list(current_data.columns)}")
     
-    # FIXED: Extract weather data from current row
+    # Extract weather data
     weather_data = extract_weather_data(current_data)
     results['weather'] = weather_data
     
-    # NEW: Add historical AQI data (last 48 hours)
+    # Add historical AQI data
     historical_aqi = []
     if len(historical_data) > 0 and 'timestamp' in historical_data.columns:
-        # Get last 48 hours of data
         historical_subset = historical_data.tail(48).copy()
         
         for _, row in historical_subset.iterrows():
-            # Calculate AQI from pollutant values if available
             aqi_value = 0
             timestamp = row.get('timestamp', '')
             
-            # Use existing AQI if available
             if 'AQI' in row.index and pd.notna(row['AQI']):
                 aqi_value = float(row['AQI'])
             else:
-                # Calculate from pollutants (simple PM2.5 based)
                 if 'PM25' in row.index and pd.notna(row['PM25']):
                     pm25 = float(row['PM25'])
-                    # PM2.5 based AQI approximation
                     if pm25 <= 30:
                         aqi_value = pm25 * 50 / 30
                     elif pm25 <= 60:
@@ -447,20 +435,19 @@ def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, stand
                     else:
                         aqi_value = 400 + (pm25 - 250) * 100 / 130
             
-            if aqi_value > 0:  # Only add if we have valid AQI
+            if aqi_value > 0:
                 historical_aqi.append({
                     'timestamp': str(timestamp),
                     'aqi': round(aqi_value, 1)
                 })
         
-        logger.info(f"✓ Prepared {len(historical_aqi)} historical AQI data points")
+        logger.info(f"âœ“ Prepared {len(historical_aqi)} historical AQI data points")
     
     results['historical'] = historical_aqi
     
     for pollutant in ['PM25', 'PM10', 'NO2', 'OZONE']:
         results[pollutant] = {}
         
-        # Check if pollutant data exists
         if pollutant not in historical_data.columns:
             logger.warning(f"{pollutant} not in data columns")
             for horizon in ['1h', '6h', '12h', '24h']:
@@ -481,7 +468,7 @@ def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, stand
                     'aqi_mid': sub_idx['aqi_mid'],
                     'concentration_range': sub_idx['concentration_range']
                 }
-                logger.info(f"✓ {pollutant} {horizon}: {category} ({confidence:.2%})")
+                logger.info(f"âœ“ {pollutant} {horizon}: {category} ({confidence:.2%})")
             except Exception as e:
                 logger.error(f"Failed {pollutant} {horizon}: {e}")
                 results[pollutant][horizon] = {
@@ -507,27 +494,161 @@ def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, stand
     return results
 
 # ============================================================================
-# GEMINI AI ASSISTANT - FIXED VERSION
+# RESPONSE VALIDATOR
+# ============================================================================
+
+class ResponseValidator:
+    """Validates LLM responses for safety, accuracy, and structure"""
+    
+    FORBIDDEN_PHRASES = [
+        'diagnose', 'diagnosis', 'cure', 'treatment', 'medication',
+        'prescribe', 'prescription', 'take this medicine',
+        'definitely have', 'you have a disease', 'medical condition'
+    ]
+    
+    REQUIRED_DISCLAIMER = "**Important:** This is not medical advice"
+    DISCLAIMER_TEXT = "\n\n⚠️ **Important:** This is not medical advice. Please consult a healthcare professional for diagnosis or treatment."
+    
+    @staticmethod
+    def ensure_structure(response: str, context: Dict) -> str:
+        """Ensure response has proper structure with sections"""
+        
+        # Check if response already has good structure (has section headers)
+        has_structure = ('**Current Situation:**' in response or 
+                        '**Your Risk Level:**' in response or
+                        '**Recommended Actions:**' in response)
+        
+        if has_structure:
+            # Response already structured, just clean it up
+            return response.strip()
+        
+        # If not structured, try to add basic structure
+        # Split into paragraphs
+        paragraphs = [p.strip() for p in response.split('\n\n') if p.strip()]
+        
+        if len(paragraphs) >= 2:
+            # Try to structure it
+            structured = f"**Current Situation:**\n{paragraphs[0]}\n\n"
+            
+            if len(paragraphs) >= 3:
+                structured += f"**Recommended Actions:**\n{paragraphs[1]}\n\n"
+                structured += '\n\n'.join(paragraphs[2:])
+            else:
+                structured += '\n\n'.join(paragraphs[1:])
+            
+            return structured
+        
+        return response
+    
+    @staticmethod
+    def validate_response(response: str, context: Dict) -> Dict:
+        """
+        Validate LLM response for safety, grounding, and structure
+        
+        Returns:
+            {
+                'valid': bool,
+                'warnings': List[str],
+                'modified_response': str (if modifications needed)
+            }
+        """
+        warnings = []
+        valid = True
+        
+        # 1. Check for forbidden medical terms
+        response_lower = response.lower()
+        for phrase in ResponseValidator.FORBIDDEN_PHRASES:
+            if phrase in response_lower:
+                warnings.append(f"Contains forbidden medical term: '{phrase}'")
+                valid = False
+        
+        # 2. Check response length (too short may indicate error)
+        if len(response.strip()) < 50:
+            warnings.append("Response too short - may be incomplete")
+            valid = False
+            # For very short responses, don't modify further
+            return {
+                'valid': valid,
+                'warnings': warnings,
+                'modified_response': response
+            }
+        
+        # 3. Ensure structure
+        modified_response = ResponseValidator.ensure_structure(response, context)
+        
+        # 4. Check data grounding
+        if context.get('aqi_data'):
+            aqi_mid = context['aqi_data'].get('aqi_mid', 0)
+            if aqi_mid > 0 and str(int(aqi_mid)) not in modified_response and 'AQI' not in modified_response.upper():
+                warnings.append("Response may not be grounded in provided AQI data")
+        
+        # 5. Check for hallucinated temperature data
+        if context.get('weather'):
+            temp = context['weather'].get('temperature', 0)
+            temp_mentions = re.findall(r'(\d+)\s*°?[Cc]', modified_response)
+            if temp_mentions and temp > 0:
+                for temp_str in temp_mentions:
+                    try:
+                        mentioned_temp = int(temp_str)
+                        if abs(mentioned_temp - temp) > 10:
+                            warnings.append(f"Temperature mismatch: mentioned {mentioned_temp}°C but actual is {temp:.1f}°C")
+                    except ValueError:
+                        pass
+        
+        # 6. ALWAYS ensure medical disclaimer is at the end (do this last)
+        # Remove any existing disclaimers first to avoid duplicates
+        disclaimer_patterns = [
+            r'\n*\s*⚠️\s*\*\*Important:\*\*.*?medical advice.*?(?:\n\n|\Z)',
+            r'\n*\s*\*\*Important:\*\*\s*This is not medical advice.*?(?:\n\n|\Z)',
+            r'\n*\s*This is not medical advice.*?(?:\n\n|\Z)',
+            r'\n*\s*⚠.*?medical advice.*?(?:\n\n|\Z)'
+        ]
+        
+        for pattern in disclaimer_patterns:
+            modified_response = re.sub(pattern, '', modified_response, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Clean up trailing whitespace
+        modified_response = modified_response.strip()
+        
+        # Add the disclaimer at the end
+        modified_response = modified_response + ResponseValidator.DISCLAIMER_TEXT
+        
+        # 7. Final check: ensure disclaimer is present
+        if ResponseValidator.REQUIRED_DISCLAIMER not in modified_response:
+            warnings.append("Disclaimer could not be added properly")
+            # Force add it again
+            modified_response = modified_response + ResponseValidator.DISCLAIMER_TEXT
+        
+        return {
+            'valid': valid,
+            'warnings': warnings,
+            'modified_response': modified_response
+        }
+
+response_validator = ResponseValidator()
+
+# ============================================================================
+# GEMINI AI ASSISTANT - ENHANCED VERSION
 # ============================================================================
 
 class GeminiAssistant:
     def __init__(self):
         self.enabled = False
         self.model = None
-        self.model_name = None  # Track which model we're using
+        self.model_name = None
         
         if not Config.GEMINI_API_KEY:
-            logger.warning("❌ GEMINI_API_KEY not found in environment")
+            logger.warning("âš  GEMINI_API_KEY not found in environment")
             return
             
         if not GEMINI_AVAILABLE:
-            logger.warning("❌ google-generativeai package not installed")
+            logger.warning("âš  google-generativeai package not installed")
             return
         
         try:
             genai.configure(api_key=Config.GEMINI_API_KEY)
             
-            # Try multiple model names in order of preference
+            # FIXED: Try correct Gemini model names
             models_to_try = [
                 'gemini-2.5-pro',
                 'gemini-2.5-flash',
@@ -536,13 +657,39 @@ class GeminiAssistant:
             
             for model_name in models_to_try:
                 try:
-                    self.model = genai.GenerativeModel(model_name)
-                    # Test the model works
+                    self.model = genai.GenerativeModel(
+                        model_name=model_name,
+                        generation_config={
+                            'temperature': 0.7,
+                            'top_p': 0.95,
+                            'top_k': 40,
+                            'max_output_tokens': 1024,
+                        },
+                        safety_settings=[
+                            {
+                                "category": "HARM_CATEGORY_HARASSMENT",
+                                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                            },
+                            {
+                                "category": "HARM_CATEGORY_HATE_SPEECH",
+                                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                            },
+                            {
+                                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                            },
+                            {
+                                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                            },
+                        ]
+                    )
+                    # Test the model
                     test_response = self.model.generate_content("Hello")
-                    if test_response:
+                    if test_response and test_response.text:
                         self.enabled = True
-                        self.model_name = model_name  # Store the working model name
-                        logger.info(f"✓ Gemini AI initialized with {model_name}")
+                        self.model_name = model_name
+                        logger.info(f"âœ“ Gemini AI initialized with {model_name}")
                         break
                 except Exception as e:
                     logger.debug(f"Model {model_name} not available: {e}")
@@ -550,174 +697,314 @@ class GeminiAssistant:
             
             if not self.enabled:
                 logger.error("Failed to initialize any Gemini model")
-                self.enabled = False
                     
         except Exception as e:
-            logger.error(f"❌ Gemini initialization failed: {e}")
+            logger.error(f"âš  Gemini initialization failed: {e}")
             self.enabled = False
     
     def get_response(self, message: str, context: Dict) -> Dict:
         user_profile = context.get('user_profile', {})
         location = context.get('location', 'Unknown')
         aqi_data = context.get('aqi_data', {})
-        
-        # FIXED: Add weather data to context
         weather_data = context.get('weather', {})
         
         if not self.enabled:
             logger.warning("Gemini not enabled, using static response")
             return {
                 'response': self._static_response(context, user_profile),
-                'updated_profile': None
+                'updated_profile': None,
+                'validation': {'valid': True, 'warnings': []}
             }
         
         try:
-            # Extract user profile information
+            # Build comprehensive context
             age_category = user_profile.get('age_category', '')
             health_category = user_profile.get('health_category', '')
             gender = user_profile.get('gender', '')
             profile_label = user_profile.get('profile_label', 'general public')
             
-            # Build profile context with detailed breakdown
-            profile_context = ""
-            profile_parts = []
+            # IMPROVED PROMPT with strict structure enforcement
+            system_instruction = """You are an empathetic, professional Air Quality & Health Advisory Assistant for Delhi NCR, India.
+
+                                    YOUR ROLE:
+                                    - Provide personalized, risk-based, and actionable air quality advice
+                                    - Be warm, caring, and supportive while remaining professional
+                                    - Focus on prevention and practical recommendations
+
+                                    CRITICAL RULES (NEVER BREAK):
+                                    1. NEVER diagnose medical conditions or diseases
+                                    2. NEVER prescribe medications or treatments
+                                    3. ALWAYS base advice ONLY on the provided air quality and weather data
+                                    4. DO NOT include a medical disclaimer yourself - it will be added automatically
+                                    5. NEVER introduce data not provided in the context
+                                    6. Stay focused on air quality, pollution, and health protection
+                                    7. If asked about unrelated topics, politely redirect to air quality
+
+                                    MANDATORY OUTPUT FORMAT (FOLLOW EXACTLY):
+                                    You MUST structure your response using these EXACT section headers:
+
+                                    **Current Situation:**
+                                    [Write 1-2 sentences summarizing the air quality and weather conditions using the provided data]
+
+                                    **Your Risk Level:**
+                                    [State the risk level (Low/Moderate/High/Severe) specific to the user's profile]
+
+                                    **Recommended Actions:**
+                                    - [Action 1 with emoji - be specific and practical]
+                                    - [Action 2 with emoji - be specific and practical]
+                                    - [Action 3 with emoji - be specific and practical]
+                                    - [Action 4 with emoji - be specific and practical]
+
+                                    DO NOT add any additional sections after Recommended Actions. DO NOT add a disclaimer section.
+
+                                    EXAMPLE RESPONSE:
+                                    **Current Situation:**
+                                    Air quality is poor with AQI at 180 (Unhealthy for Sensitive Groups). Temperature is 28°C with moderate humidity at 65%.
+
+                                    **Your Risk Level:**
+                                    High Risk - As someone with asthma, you are particularly vulnerable to current pollution levels.
+
+                                    **Recommended Actions:**
+                                    - 🏠 Stay indoors with windows closed and use air purifiers if available
+                                    - 😷 Wear a properly fitted N95 mask if you must go outside
+                                    - 💊 Keep your rescue inhaler with you at all times
+                                    - 📞 Contact your doctor if you experience any breathing difficulties"""
+
+            # Build detailed profile context
+            profile_context = self._build_profile_context(
+                age_category, health_category, gender, profile_label
+            )
             
-            if age_category or health_category or gender:
-                age_guidance = {
-                    'child': 'Children have developing lungs and breathe more air relative to body weight. Extra sensitive to pollution.',
-                    'teenager': 'Teenagers are active and breathe more air during sports/activities. Monitor for symptoms.',
-                    'adult': 'Adults should take standard precautions based on AQI levels.',
-                    'elderly': 'Elderly persons have weaker immune systems and may have existing conditions. High risk group.'
-                }
-                
-                health_guidance = {
-                    'asthma': 'Asthma patients extremely sensitive - even low pollution can trigger attacks. Keep rescue inhaler ready.',
-                    'heart_condition': 'Heart patients at high risk - pollution can trigger cardiac events. Avoid exertion in poor air.',
-                    'respiratory': 'Respiratory issues make them highly vulnerable. Avoid outdoor exposure during poor AQI.',
-                    'copd': 'COPD patients must take extreme caution - pollution can cause severe exacerbations.',
-                    'diabetes': 'Diabetics may have increased inflammation from pollution. Monitor blood sugar and avoid exposure.',
-                    'pregnant': 'Pregnancy requires special care - pollution affects both mother and baby. Minimize exposure.'
-                }
-                
-                gender_context = {
-                    'female': 'Women may experience different health impacts from air pollution.',
-                    'male': 'Men should be aware of cardiovascular risks from pollution exposure.'
-                }
-                
-                if age_category:
-                    profile_parts.append(age_guidance.get(age_category, ''))
-                
-                if health_category:
-                    profile_parts.append(health_guidance.get(health_category, ''))
-                
-                if gender and gender in gender_context:
-                    profile_parts.append(gender_context[gender])
-                
-                if profile_parts:
-                    profile_context = f"\n\nIMPORTANT: User profile is {profile_label}. "
-                    profile_context += " ".join(profile_parts)
-                    profile_context += " Tailor your advice specifically for this profile."
-            
-            # FIXED: Add weather context
+            # Build weather context
             weather_context = ""
             if weather_data:
                 temp = weather_data.get('temperature', 0)
                 humidity = weather_data.get('humidity', 0)
                 wind = weather_data.get('windSpeed', 0)
-                weather_context = f"\n\nWeather Conditions:\n- Temperature: {temp:.1f}Â°C\n- Humidity: {humidity:.1f}%\n- Wind Speed: {wind:.1f} km/h"
+                weather_context = f"""
+                                        **Current Weather:**
+                                        - Temperature: {temp:.1f}Â°C
+                                        - Humidity: {humidity:.1f}%
+                                        - Wind Speed: {wind:.1f} km/h
+                                    """
             
-            prompt = f"""You are an expert AQI health advisor for Delhi NCR, providing personalized air quality advice.
-
-Current Context:
-- Location: {location}
-- Current AQI: {aqi_data.get('aqi_mid', 'N/A')} ({aqi_data.get('category', 'Unknown')})
-- Dominant Pollutant: {aqi_data.get('dominant_pollutant', 'Unknown')}
-{weather_context}
-{profile_context}
-
-User Question: {message}
-
-Instructions:
-1. Provide personalized health advice based on the user's profile
-2. Be specific about precautions for their situation
-3. Consider weather conditions in your recommendations
-4. Include actionable recommendations
-5. Keep response 4-6 sentences
-6. Use a warm, caring, but professional tone
-
-Provide your response:"""
+            # Build AQI context
+            aqi_context = ""
+            if aqi_data:
+                aqi_mid = aqi_data.get('aqi_mid', 0)
+                category = aqi_data.get('category', 'Unknown')
+                dominant = aqi_data.get('dominant_pollutant', 'Unknown')
+                aqi_context = f"""
+                                    **Current Air Quality:**
+                                    - Location: {location}
+                                    - AQI: {aqi_mid:.0f} ({category})
+                                    - Dominant Pollutant: {dominant}
+                                """
             
-            logger.info(f"Sending request to Gemini for location: {location}")
-            response = self.model.generate_content(prompt)
+            # Construct full prompt
+            full_prompt = f"""{system_instruction}
+
+                                {aqi_context}
+                                {weather_context}
+                                {profile_context}
+
+                                **User Question:** {message}
+
+                                **Instructions:**
+                                1. Analyze the current air quality for this specific user profile
+                                2. Assess the health risk level (Low/Moderate/High/Severe)
+                                3. Provide 3-4 specific, actionable recommendations
+                                4. Consider the weather conditions in your advice
+                                5. End with: "âš ï¸ **Important:** This is not medical advice. Please consult a healthcare professional for diagnosis or treatment."
+
+                                **Your Response:**
+                            """
+            
+            logger.info(f"Sending request to Gemini for: {location}")
+            response = self.model.generate_content(full_prompt)
             
             if response and response.text:
-                logger.info("✓ Received response from Gemini")
+                logger.info("âœ“ Received response from Gemini")
+                
+                # Validate response
+                validation = response_validator.validate_response(
+                    response.text, context
+                )
+                
+                final_response = validation['modified_response']
+                
+                if not validation['valid']:
+                    logger.warning(f"Response validation warnings: {validation['warnings']}")
+                
                 return {
-                    'response': response.text,
-                    'updated_profile': None
+                    'response': final_response,
+                    'updated_profile': None,
+                    'validation': validation
                 }
             else:
                 logger.warning("Empty response from Gemini")
                 return {
                     'response': self._static_response(context, user_profile),
-                    'updated_profile': None
+                    'updated_profile': None,
+                    'validation': {'valid': True, 'warnings': ['Used fallback response']}
                 }
                 
         except Exception as e:
-            logger.error(f"❌ Gemini error: {str(e)}")
-            logger.exception(e)  # Log full traceback
+            logger.error(f"âš  Gemini error: {str(e)}")
+            logger.exception(e)
             return {
-                'response': self._static_response(context, user_profile),
-                'updated_profile': None
+                    'response': self._static_response(context, user_profile),
+                    'updated_profile': None,
+                    'validation': {'valid': True, 'warnings': [f'Error: {str(e)}, used fallback']}
             }
     
+    def _build_profile_context(self, age_category, health_category, gender, profile_label):
+        """Build detailed profile context for prompt"""
+        profile_context = ""
+        profile_parts = []
+        
+        if age_category or health_category or gender:
+            age_guidance = {
+                'child': 'Children have developing lungs and breathe more air relative to body weight. They are extra sensitive to pollution and should avoid outdoor activities during poor air quality.',
+                'teenager': 'Teenagers are highly active and breathe more air during sports/activities. They should monitor for symptoms like coughing or shortness of breath.',
+                'adult': 'Adults should take standard precautions based on AQI levels and limit outdoor exertion during poor air quality.',
+                'elderly': 'Elderly persons have weaker immune systems and may have existing health conditions. They are a high-risk group requiring extra caution.'
+            }
+            
+            health_guidance = {
+                'asthma': 'Asthma patients are extremely sensitive to air pollution. Even low pollution levels can trigger asthma attacks. Keep rescue inhaler readily available at all times.',
+                'heart_condition': 'People with heart conditions are at high risk from air pollution, which can trigger cardiac events. Avoid any physical exertion during poor air quality.',
+                'respiratory': 'Those with respiratory issues are highly vulnerable to air pollution. Avoid outdoor exposure during poor AQI and use air purifiers indoors.',
+                'copd': 'COPD patients must exercise extreme caution. Air pollution can cause severe exacerbations. Stay indoors during poor air quality and keep medications handy.',
+                'diabetes': 'People with diabetes may experience increased inflammation from pollution. Monitor blood sugar levels closely and minimize outdoor exposure during poor AQI.',
+                'pregnant': 'Pregnancy requires special care as pollution affects both mother and baby. Minimize outdoor exposure and ensure good indoor air quality.'
+            }
+            
+            if age_category:
+                profile_parts.append(age_guidance.get(age_category, ''))
+            
+            if health_category:
+                profile_parts.append(health_guidance.get(health_category, ''))
+            
+            if profile_parts:
+                profile_context = f"\n\n**IMPORTANT - User Profile is {profile_label}:**\n"
+                profile_context += "\n".join(f"- {part}" for part in profile_parts if part)
+                profile_context += "\n\n**Tailor your advice specifically for this high-risk profile with extra precautions.**"
+        
+        return profile_context
+    
     def _static_response(self, context, user_profile=None):
+        """Enhanced static response with better structure"""
         category = context.get('aqi_data', {}).get('category', 'Unknown')
+        aqi_mid = context.get('aqi_data', {}).get('aqi_mid', 0)
         weather = context.get('weather', {})
         
-        # Base responses by AQI category
+        # Base responses by AQI category with structured format
         base_responses = {
-            'Good': "✅ Air quality is excellent! Safe for all outdoor activities.",
-            'Satisfactory': "😊 Air quality is acceptable for most people.",
-            'Moderate': "⚠️ Moderate air quality. Sensitive individuals should be cautious.",
-            'Poor': "🚨 Poor air quality. Limit outdoor activities.",
-            'Very_Poor': "⛔ Very poor air quality! Stay indoors.",
-            'Severe': "🔴 SEVERE air quality! Do not go outside."
+            'Good': {
+                'situation': f"Air quality is excellent with AQI {aqi_mid:.0f}! This is perfect weather for outdoor activities.",
+                'risk': 'Low Risk - Safe for everyone',
+                'actions': [
+                    "âœ“ Enjoy outdoor activities and exercise freely",
+                    "âœ“ Open windows to ventilate your home",
+                    "âœ“ Great time for children to play outside",
+                    "âœ“ No special precautions needed"
+                ]
+            },
+            'Satisfactory': {
+                'situation': f"Air quality is acceptable with AQI {aqi_mid:.0f}. Generally safe for most people.",
+                'risk': 'Low to Moderate Risk',
+                'actions': [
+                    "âœ“ Outdoor activities are generally safe",
+                    "âœ“ Sensitive individuals should monitor for symptoms",
+                    "âœ“ Consider lighter exercises if you're sensitive",
+                    "âœ“ Keep windows open for ventilation"
+                ]
+            },
+            'Moderate': {
+                'situation': f"Air quality is moderate with AQI {aqi_mid:.0f}. Sensitive groups should be cautious.",
+                'risk': 'Moderate Risk - Caution for sensitive groups',
+                'actions': [
+                    "âš  Limit prolonged outdoor activities for sensitive groups",
+                    "âš  Consider wearing masks for extended outdoor exposure",
+                    "âš  Children and elderly should reduce outdoor time",
+                    "âš  Use air purifiers indoors if available"
+                ]
+            },
+            'Poor': {
+                'situation': f"Poor air quality with AQI {aqi_mid:.0f}. Health effects possible for general public.",
+                'risk': 'High Risk - Limit outdoor exposure',
+                'actions': [
+                    "ðŸš¨ Avoid prolonged outdoor activities",
+                    "ðŸš¨ Wear N95 masks when going outside",
+                    "ðŸš¨ Keep windows closed and use air purifiers",
+                    "ðŸš¨ Those with respiratory conditions: stay indoors and keep medications ready"
+                ]
+            },
+            'Very_Poor': {
+                'situation': f"Very poor air quality with AQI {aqi_mid:.0f}! Serious health effects for everyone.",
+                'risk': 'Severe Risk - Stay indoors',
+                'actions': [
+                    "ðŸ›‘ Stay indoors with windows closed",
+                    "ðŸ›‘ Use N95 masks if you must go outside",
+                    "ðŸ›‘ Run air purifiers on high setting",
+                    "ðŸ›‘ High-risk individuals: avoid all outdoor exposure and monitor health closely"
+                ]
+            },
+            'Severe': {
+                'situation': f"SEVERE air quality emergency with AQI {aqi_mid:.0f}! Immediate health danger.",
+                'risk': 'EXTREME RISK - Do not go outside',
+                'actions': [
+                    "ðŸ”´ DO NOT go outside under any circumstances",
+                    "ðŸ”´ Seal windows and doors, use air purifiers",
+                    "ðŸ”´ High-risk groups: Have emergency medications ready",
+                    "ðŸ”´ If experiencing breathing difficulties, seek immediate medical help"
+                ]
+            }
         }
         
-        response = base_responses.get(category, "How can I help you with air quality information?")
+        response_data = base_responses.get(category, base_responses['Severe'])
         
-        # Add weather context if available
+        # Build structured response
+        response = f"""**Current Situation:**
+{response_data['situation']}
+
+**Your Risk Level:**
+{response_data['risk']}
+
+**Recommended Actions:**
+{chr(10).join(response_data['actions'])}"""
+        
+        # Add weather context
         if weather and weather.get('temperature', 0) > 0:
             temp = weather.get('temperature', 0)
             humidity = weather.get('humidity', 0)
-            response += f" Current temperature is {temp:.1f}Â°C with {humidity:.1f}% humidity."
+            response += f"\n\n**Weather:** Temperature {temp:.1f}Â°C, Humidity {humidity:.1f}%"
         
-        # Add profile-specific advice based on new structure
+        # Add profile-specific advice
         if user_profile:
             age_category = user_profile.get('age_category', '')
             health_category = user_profile.get('health_category', '')
             
-            age_advice = {
-                'child': " Children should avoid outdoor play during poor air quality.",
-                'elderly': " Elderly persons should take extra precautions and stay indoors.",
-                'teenager': " Teenagers should avoid intensive outdoor sports during poor AQI."
-            }
+            profile_advice = []
             
-            health_advice = {
-                'pregnant': " Pregnant women should minimize outdoor exposure to protect the baby.",
-                'asthma': " Asthma patients should keep rescue inhalers ready and avoid triggers.",
-                'heart_condition': " Heart patients should avoid physical exertion outdoors.",
-                'respiratory': " Those with respiratory issues should use air purifiers indoors.",
-                'copd': " COPD patients must stay indoors and use supplemental oxygen if needed.",
-                'diabetes': " Diabetics should monitor blood sugar and limit outdoor exposure."
-            }
+            if health_category == 'asthma':
+                profile_advice.append("ðŸ« **Asthma Alert:** Keep your rescue inhaler with you at all times. Avoid triggers and outdoor exposure.")
+            elif health_category == 'heart_condition':
+                profile_advice.append("â¤ï¸ **Heart Condition Alert:** Avoid any physical exertion. Rest indoors and monitor for chest pain or discomfort.")
+            elif health_category == 'pregnant':
+                profile_advice.append("ðŸ¤° **Pregnancy Alert:** Protect both you and your baby by staying indoors during poor air quality.")
+            elif health_category == 'elderly':
+                profile_advice.append("ðŸ‘´ **Elderly Alert:** Take extra precautions. Stay indoors and monitor your health closely.")
             
-            if age_category in age_advice:
-                response += age_advice[age_category]
+            if age_category == 'child':
+                profile_advice.append("ðŸ‘¶ **Children's Alert:** Keep children indoors during poor air quality. Avoid outdoor play.")
             
-            if health_category in health_advice:
-                response += health_advice[health_category]
+            if profile_advice:
+                response += "\n\n" + "\n".join(profile_advice)
+        
+        # Add medical disclaimer
+        response += "\n\nâš ï¸ **Important:** This is not medical advice. Please consult a healthcare professional for diagnosis or treatment."
         
         return response
 
@@ -730,9 +1017,16 @@ gemini_assistant = GeminiAssistant()
 @app.get("/")
 async def root():
     return {
-        "message": "AQI Dashboard API",
-        "version": "1.0.0",
-        "status": "running"
+        "message": "AQI Dashboard API - Enhanced Version",
+        "version": "2.0.0",
+        "status": "running",
+        "features": [
+            "AI-powered health advice",
+            "Response validation",
+            "Safety guardrails",
+            "Multilingual support",
+            "Personalized recommendations"
+        ]
     }
 
 @app.get("/api/regions")
@@ -765,16 +1059,19 @@ async def predict(request: PredictionRequest):
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
-    """Chat with AI assistant"""
+    """Chat with AI assistant with validation"""
     try:
-        # FIXED: Include weather data in context
+        # Build context
         context = {
             'location': request.location,
             'aqi_data': request.aqi_data,
             'user_profile': request.user_profile,
             'weather': request.aqi_data.get('weather', {}) if request.aqi_data else {}
         }
+        
+        # Get response with validation
         result = gemini_assistant.get_response(request.message, context)
+        
         return result
     except Exception as e:
         logger.error(f"Chat error: {e}", exc_info=True)
@@ -785,10 +1082,17 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
+        "version": "2.0.0",
         "data_loaded": len(data_manager.data) > 0,
         "locations": len(data_manager.whitelist),
         "gemini_enabled": gemini_assistant.enabled,
-        "gemini_model": gemini_assistant.model_name if gemini_assistant.enabled else "disabled"
+        "gemini_model": gemini_assistant.model_name if gemini_assistant.enabled else "disabled",
+        "features": {
+            "response_validation": True,
+            "safety_guardrails": True,
+            "medical_disclaimer": True,
+            "data_grounding": True
+        }
     }
 
 # ============================================================================
