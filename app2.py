@@ -1,7 +1,7 @@
 """
-AQI Dashboard - FastAPI Backend (LSTM VERSION)
+AQI Dashboard - FastAPI Backend (ENHANCED VERSION)
 Complete REST API for air quality predictions and AI assistance
-UPDATED FOR: LSTM Regression Models with Lat/Long matching
+IMPROVEMENTS: Better Gemini prompts, validation, guardrails, safety checks
 """
 
 from fastapi import FastAPI, HTTPException, Request
@@ -17,16 +17,9 @@ import json
 import os
 import re
 
-# LSTM imports
-import tensorflow as tf
-from tensorflow.keras.models import load_model as keras_load_model
-
-# Load environment variables from .env file
+# ðŸ”§ Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv()
-
-# Import proper feature engineer
-from feature_engineer import FeatureEngineer, FeatureAligner
 
 # Import Gemini AI
 try:
@@ -47,7 +40,7 @@ class Config:
     BASE_DIR = Path(__file__).parent
     MODEL_PATH = BASE_DIR / "Classification_trained_models"
     DATA_PATH = BASE_DIR / "data" / "inference_data.csv"
-    WHITELIST_PATH = BASE_DIR / "data" / "region_wise_popular_places_from_inference.csv"
+    WHITELIST_PATH = BASE_DIR / "region_wise_popular_places_from_inference.csv"
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     
     AQI_COLORS_IN = {
@@ -80,8 +73,8 @@ class ChatRequest(BaseModel):
 
 app = FastAPI(
     title="AQI Dashboard API",
-    description="Air Quality Index Prediction and Advisory System (LSTM)",
-    version="2.1.0"
+    description="Air Quality Index Prediction and Advisory System",
+    version="2.0.0"
 )
 
 # CORS middleware
@@ -104,7 +97,7 @@ class DataManager:
         self.models = {}
     
     def load_data(self):
-        """Load inference data with mixed date format support"""
+        """Load data with mixed date format support"""
         try:
             if not os.path.exists(Config.DATA_PATH):
                 raise FileNotFoundError(f"Data file not found: {Config.DATA_PATH}")
@@ -112,113 +105,80 @@ class DataManager:
             logger.info(f"Loading data from: {Config.DATA_PATH}")
             df = pd.read_csv(Config.DATA_PATH)
             
-            logger.info(f"Data columns: {list(df.columns)}")
-            
-            # Handle timestamp column
-            # Expected columns: timestamp,lat,lon,year,month,day,hour,location,pincode,region,CO,NO2,OZONE,SO2,PM25,PM10,AQI,...
-            if 'timestamp' in df.columns:
-                df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed', errors='coerce')
-            elif 'date' in df.columns:
+            # Handle mixed date formats
+            if 'date' in df.columns:
                 df['timestamp'] = pd.to_datetime(df['date'], format='mixed', errors='coerce')
+            elif 'timestamp' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed', errors='coerce')
             else:
-                raise ValueError("Data must have 'timestamp' or 'date' column")
+                raise ValueError("Data must have 'date' or 'timestamp' column")
             
-            # Verify required columns for lat/lon matching
-            if 'lng' in df.columns and 'lon' not in df.columns:
+            # Handle lng -> lon mapping
+            if 'lng' in df.columns:
                 df['lon'] = df['lng']
-            if 'lat' not in df.columns or 'lon' not in df.columns:
-                raise ValueError(f"Data must have 'lat' and 'lon' columns. Found: {list(df.columns)}")
             
-            # Drop rows with missing coordinates
-            initial_count = len(df)
-            df = df.dropna(subset=['lat', 'lon', 'timestamp'])
-            dropped = initial_count - len(df)
-            if dropped > 0:
-                logger.warning(f"Dropped {dropped} rows with missing lat/lon/timestamp")
+            # Verify required columns
+            if 'lat' not in df.columns or 'lon' not in df.columns:
+                raise ValueError("Data must have 'lat' and 'lon' columns")
             
             df = df.sort_values(['lat', 'lon', 'timestamp'])
-            logger.info(f"✓ Loaded {len(df)} valid data rows")
-            logger.info(f"Date range: {df['timestamp'].min()} to {df['timestamp'].max()}")
-            logger.info(f"Unique coordinates: {len(df.groupby(['lat', 'lon']))}")
-            
-            # Log sample of available pollutants
-            pollutant_cols = ['PM25', 'PM10', 'NO2', 'OZONE', 'CO', 'SO2']
-            available_pollutants = [col for col in pollutant_cols if col in df.columns]
-            logger.info(f"Available pollutants: {available_pollutants}")
+            logger.info(f"âœ“ Loaded {len(df)} data rows")
+            logger.info(f"Available columns: {list(df.columns)}")
             
             return df
             
         except Exception as e:
-            logger.error(f"Failed to load data: {e}", exc_info=True)
+            logger.error(f"Failed to load data: {e}")
             return pd.DataFrame(columns=['lat', 'lon', 'timestamp'])
     
     def load_whitelist(self):
-        """Load whitelist ONLY from region_wise_popular_places_from_inference.csv"""
+        """Load whitelist and augment with actual data locations"""
         try:
             whitelist = {}
             
-            if not os.path.exists(Config.WHITELIST_PATH):
-                raise FileNotFoundError(f"Whitelist file not found: {Config.WHITELIST_PATH}")
-            
-            logger.info(f"Loading whitelist from: {Config.WHITELIST_PATH}")
-            df = pd.read_csv(Config.WHITELIST_PATH)
-            
-            logger.info(f"Whitelist columns: {list(df.columns)}")
-            
-            # Expected columns: Region, Place, Area/Locality, PIN Code, Latitude, Longitude
-            required_cols = ['Region', 'Place', 'Latitude', 'Longitude']
-            missing_cols = [col for col in required_cols if col not in df.columns]
-            if missing_cols:
-                raise ValueError(f"Missing required columns in whitelist: {missing_cols}. Found: {list(df.columns)}")
-            
-            for idx, row in df.iterrows():
-                try:
-                    place_name = str(row['Place']).strip()
-                    region = str(row['Region']).strip()
-                    lat = float(row['Latitude'])
-                    lon = float(row['Longitude'])
-                    
-                    # Skip invalid entries
-                    if not place_name or not region or pd.isna(lat) or pd.isna(lon):
-                        logger.warning(f"Skipping invalid row {idx}: {place_name}, {region}, {lat}, {lon}")
-                        continue
-                    
-                    whitelist[place_name] = {
-                        'region': region,
-                        'lat': lat,
-                        'lon': lon,
-                        'pin': str(row.get('PIN Code', '')).strip() if pd.notna(row.get('PIN Code')) else '',
-                        'area': str(row.get('Area/Locality', place_name)).strip() if pd.notna(row.get('Area/Locality')) else place_name
+            # Load original whitelist if exists
+            if os.path.exists(Config.WHITELIST_PATH):
+                df = pd.read_csv(Config.WHITELIST_PATH)
+                for _, row in df.iterrows():
+                    whitelist[row['Place']] = {
+                        'region': row['Region'],
+                        'lat': row['Latitude'],
+                        'lon': row['Longitude'],
+                        'pin': row.get('PIN Code', ''),
+                        'area': row.get('Area/Locality', row['Place'])
                     }
-                except Exception as e:
-                    logger.warning(f"Error processing row {idx}: {e}")
-                    continue
+                logger.info(f"âœ“ Loaded {len(whitelist)} locations from whitelist")
             
-            logger.info(f"✓ Loaded {len(whitelist)} locations from whitelist")
+            # Add locations from actual data
+            if len(self.data) > 0 and 'location' in self.data.columns:
+                location_groups = self.data.groupby(['lat', 'lon']).agg({
+                    'location': 'first',
+                    'pincode': lambda x: x.dropna().iloc[0] if len(x.dropna()) > 0 else '',
+                    'region': lambda x: x.dropna().iloc[0] if len(x.dropna()) > 0 else 'Unknown'
+                }).reset_index()
+                
+                added = 0
+                for _, row in location_groups.iterrows():
+                    loc_name = row['location']
+                    if pd.notna(loc_name) and str(loc_name).strip():
+                        whitelist[loc_name] = {
+                            'region': row['region'] if pd.notna(row['region']) else 'Central Delhi',
+                            'lat': row['lat'],
+                            'lon': row['lon'],
+                            'pin': row['pincode'] if pd.notna(row['pincode']) else '',
+                            'area': loc_name
+                        }
+                        added += 1
+                
+                logger.info(f"âœ“ Added {added} locations from actual data")
             
             if len(whitelist) == 0:
-                logger.error("❌ No locations loaded from whitelist!")
-                logger.error(f"Check if the CSV file has valid data at: {Config.WHITELIST_PATH}")
-            else:
-                # Log sample locations per region
-                regions = {}
-                for place, info in whitelist.items():
-                    region = info['region']
-                    if region not in regions:
-                        regions[region] = []
-                    regions[region].append(place)
-                
-                logger.info(f"✓ Regions found: {list(regions.keys())}")
-                for region, places in list(regions.items())[:5]:  # Show first 5 regions
-                    logger.info(f"  • {region}: {len(places)} locations (e.g., {places[0] if places else 'N/A'})")
-                
-                if len(regions) > 5:
-                    logger.info(f"  ... and {len(regions) - 5} more regions")
+                logger.error("No locations loaded!")
             
             return whitelist
             
         except Exception as e:
-            logger.error(f"Failed to load whitelist: {e}", exc_info=True)
+            logger.error(f"Failed to load whitelist: {e}")
             return {}
     
     def get_regions(self):
@@ -233,105 +193,93 @@ class DataManager:
         return sorted(locations)
     
     def get_location_data(self, location_name):
-        """Get current and historical data for a location using lat/lon matching"""
+        """Get current and historical data for a location"""
         if location_name not in self.whitelist:
             raise ValueError(f"Location '{location_name}' not found in whitelist")
         
         loc = self.whitelist[location_name]
         lat, lon = loc['lat'], loc['lon']
         
-        logger.info(f"Searching data for {location_name} at ({lat:.6f}, {lon:.6f})")
+        logger.info(f"Searching data for {location_name} at ({lat}, {lon})")
         
-        # Use exact coordinates from whitelist with tolerance
-        tolerance = 0.0001  # ~11 meters
-        mask = ((np.abs(self.data['lat'] - lat) < tolerance) & 
-                (np.abs(self.data['lon'] - lon) < tolerance))
+        # Use exact coordinates from whitelist
+        mask = ((np.abs(self.data['lat'] - lat) < 0.0001) & 
+               (np.abs(self.data['lon'] - lon) < 0.0001))
         loc_data = self.data[mask].copy()
         
-        # If no exact match, expand search radius progressively
+        # If no exact match, expand search
         if len(loc_data) == 0:
             logger.warning(f"No exact match, expanding search radius")
-            tolerance = 0.001  # ~111 meters
-            mask = ((np.abs(self.data['lat'] - lat) < tolerance) & 
-                    (np.abs(self.data['lon'] - lon) < tolerance))
+            mask = ((np.abs(self.data['lat'] - lat) < 0.01) & 
+                   (np.abs(self.data['lon'] - lon) < 0.01))
             loc_data = self.data[mask].copy()
         
         if len(loc_data) == 0:
-            tolerance = 0.01  # ~1.1 km
-            mask = ((np.abs(self.data['lat'] - lat) < tolerance) & 
-                    (np.abs(self.data['lon'] - lon) < tolerance))
+            mask = ((np.abs(self.data['lat'] - lat) < 0.05) & 
+                   (np.abs(self.data['lon'] - lon) < 0.05))
             loc_data = self.data[mask].copy()
         
         if len(loc_data) == 0:
-            tolerance = 0.05  # ~5.5 km
-            mask = ((np.abs(self.data['lat'] - lat) < tolerance) & 
-                    (np.abs(self.data['lon'] - lon) < tolerance))
-            loc_data = self.data[mask].copy()
+            raise ValueError(f"No data found for {location_name} at ({lat}, {lon})")
         
-        if len(loc_data) == 0:
-            raise ValueError(
-                f"No data found for {location_name} at ({lat:.6f}, {lon:.6f})\n"
-                f"Searched up to 5.5km radius. Please check if coordinates match inference data."
-            )
-        
-        logger.info(f"✓ Found {len(loc_data)} data rows for {location_name}")
+        logger.info(f"âœ“ Found {len(loc_data)} data rows for {location_name}")
         
         loc_data = loc_data.sort_values('timestamp')
         
-        # Return current (last row) and historical (up to 300 rows for sequence building)
-        return loc_data.iloc[[-1]].copy(), loc_data.tail(300).copy()
+        return loc_data.iloc[[-1]].copy(), loc_data.tail(96).copy()
     
     def load_model(self, pollutant: str, horizon: str):
-        """Load LSTM model and artifacts for specific pollutant and horizon"""
+        """Load ML model for specific pollutant and horizon"""
         cache_key = f"{pollutant}_{horizon}"
         if cache_key in self.models:
             return self.models[cache_key]
         
-        # Load from directory structure: POLLUTANT_HORIZON/
-        model_dir = Config.MODEL_PATH / f"{pollutant}_{horizon}"
-        keras_model_path = model_dir / "lstm_pure_regression.h5"
-        artifacts_path = model_dir / "model_artifacts.pkl"
+        model_file = Config.MODEL_PATH / f"model_artifacts_{pollutant}_{horizon}.pkl"
+        if not model_file.exists():
+            raise FileNotFoundError(f"Model not found: {model_file}")
         
-        if not keras_model_path.exists():
-            raise FileNotFoundError(
-                f"LSTM model not found: {keras_model_path}\n"
-                f"Expected: {model_dir}/lstm_pure_regression.h5"
-            )
-        if not artifacts_path.exists():
-            raise FileNotFoundError(
-                f"Artifacts not found: {artifacts_path}\n"
-                f"Expected: {model_dir}/model_artifacts.pkl"
-            )
-        
-        logger.info(f"Loading LSTM model: {pollutant} {horizon}")
-        
-        # Load Keras model
-        keras_model = keras_load_model(str(keras_model_path), compile=False)
-        
-        # Load artifacts (scalers, sequence_length, feature_names)
-        with open(artifacts_path, 'rb') as f:
-            artifacts = pickle.load(f)
-        
-        # Combine into single dict
-        model_artifact = {
-            'model': keras_model,
-            'feature_scaler': artifacts['feature_scaler'],
-            'target_scaler': artifacts['target_scaler'],
-            'sequence_length': artifacts['sequence_length'],
-            'feature_names': artifacts.get('feature_names', [])
-        }
+        with open(model_file, 'rb') as f:
+            model_artifact = pickle.load(f)
         
         self.models[cache_key] = model_artifact
-        logger.info(f"  ✓ Loaded with {len(model_artifact['feature_names'])} features")
-        
         return model_artifact
 
 # Initialize data manager
 data_manager = DataManager()
 
-# Initialize feature engineer
-feature_engineer = FeatureEngineer()
-feature_aligner = FeatureAligner()
+# ============================================================================
+# FEATURE ENGINEERING
+# ============================================================================
+
+class SimpleFeatureEngineer:
+    WEATHER_FEATURES = [
+        'temperature', 'humidity', 'dewPoint', 'apparentTemperature',
+        'precipIntensity', 'pressure', 'surfacePressure',
+        'cloudCover', 'windSpeed', 'windBearing', 'windGust'
+    ]
+    
+    def engineer_features(self, current_data: pd.DataFrame, historical_data: pd.DataFrame,
+                         pollutant: str, horizon: str) -> pd.DataFrame:
+        features = current_data.copy()
+        
+        # Add lag features
+        lag_map = {'1h': [1, 2, 3], '6h': [6, 12], '12h': [12, 24], '24h': [24, 48]}
+        for lag in lag_map.get(horizon, [1]):
+            if len(historical_data) >= lag and pollutant in historical_data.columns:
+                features.loc[features.index[0], f'{pollutant}_lag_{lag}h'] = historical_data[pollutant].iloc[-lag]
+        
+        # Select numeric features only
+        exclude = {'location', 'timestamp', 'date', 'lat', 'lng', 'lon', 'region',
+                  'PM25', 'PM10', 'NO2', 'OZONE', 'CO', 'SO2', 'AQI', 'pincode', 'loc_key', 'loc_id'}
+        numeric_cols = [c for c in features.columns 
+                       if c not in exclude and pd.api.types.is_numeric_dtype(features[c])]
+        
+        return features[numeric_cols].fillna(0).astype(np.float32)
+    
+    def align_features(self, features: pd.DataFrame, model_features: List[str]) -> pd.DataFrame:
+        return features.reindex(columns=model_features, fill_value=0.0).astype(np.float32)
+
+feature_engineer = SimpleFeatureEngineer()
 
 # ============================================================================
 # AQI CALCULATION
@@ -372,19 +320,8 @@ CATEGORY_MAPPING = {
     'Very_Poor': {'us': 'Very_Unhealthy'}, 'Severe': {'us': 'Hazardous'}
 }
 
-def concentration_to_category(concentration: float, pollutant: str) -> str:
-    """Map predicted concentration to AQI category"""
-    breakpoints = INDIAN_AQI_BREAKPOINTS.get(pollutant, {})
-    
-    for category, (low, high) in breakpoints.items():
-        if low <= concentration <= high:
-            return category
-    
-    return 'Severe'  # If above all ranges
-
 class AQICalculator:
-    def calculate_sub_index(self, pollutant: str, category: str, 
-                           predicted_value: Optional[float], standard: str):
+    def calculate_sub_index(self, pollutant: str, category: str, confidence: float, standard: str):
         normalized = category.replace(' ', '_')
         if standard == 'IN':
             aqi_min, aqi_max = INDIAN_AQI_INDEX.get(normalized, (0, 0))
@@ -395,21 +332,18 @@ class AQICalculator:
         conc_min, conc_max = INDIAN_AQI_BREAKPOINTS.get(pollutant, {}).get(normalized, (0, 0))
         
         return {
-            'pollutant': pollutant,
-            'category': category,
-            'predicted_value': predicted_value,
-            'aqi_min': aqi_min,
-            'aqi_max': aqi_max,
+            'pollutant': pollutant, 'category': category,
+            'aqi_min': aqi_min, 'aqi_max': aqi_max,
             'aqi_mid': (aqi_min + aqi_max) / 2,
             'concentration_range': (conc_min, conc_max),
-            'confidence': None
+            'confidence': confidence
         }
     
     def calculate_overall(self, predictions: Dict, standard: str):
         sub_indices = []
-        for pollutant, (category, pred_value) in predictions.items():
+        for pollutant, (category, confidence) in predictions.items():
             if pollutant in ['PM25', 'PM10', 'NO2', 'OZONE']:
-                sub_idx = self.calculate_sub_index(pollutant, category, pred_value, standard)
+                sub_idx = self.calculate_sub_index(pollutant, category, confidence, standard)
                 sub_indices.append(sub_idx)
         
         if not sub_indices:
@@ -417,97 +351,25 @@ class AQICalculator:
         
         max_idx = max(sub_indices, key=lambda x: x['aqi_mid'])
         return {
-            'aqi_min': max_idx['aqi_min'],
-            'aqi_max': max_idx['aqi_max'],
-            'aqi_mid': max_idx['aqi_mid'],
-            'category': max_idx['category'],
-            'dominant_pollutant': max_idx['pollutant'],
-            'confidence': None
+            'aqi_min': max_idx['aqi_min'], 'aqi_max': max_idx['aqi_max'],
+            'aqi_mid': max_idx['aqi_mid'], 'category': max_idx['category'],
+            'dominant_pollutant': max_idx['pollutant'], 'confidence': max_idx['confidence']
         }
 
 aqi_calculator = AQICalculator()
 
 # ============================================================================
-# PREDICTION ENGINE (LSTM)
+# PREDICTION ENGINE
 # ============================================================================
 
 def predict_single(current_data: pd.DataFrame, historical_data: pd.DataFrame,
                   pollutant: str, horizon: str):
-    """
-    Predict using LSTM regression model
-    Returns: (category, predicted_concentration)
-    """
-    # 1. Load LSTM model and artifacts
     model = data_manager.load_model(pollutant, horizon)
-    keras_model = model['model']
-    feature_scaler = model['feature_scaler']
-    target_scaler = model['target_scaler']
-    sequence_length = model['sequence_length']
-    feature_names = model['feature_names']
-    
-    # 2. Engineer features for current timestep
-    features = feature_engineer.engineer_features(
-        current_data=current_data,
-        historical_data=historical_data,
-        pollutant=pollutant,
-        horizon=horizon
-    )
-    
-    # 3. Build sequence from current + historical
-    sequence_list = []
-    
-    for i in range(sequence_length - 1, -1, -1):
-        if i == 0:
-            # Current timestep
-            timestep_features = features
-        else:
-            # Historical timestep
-            if len(historical_data) >= i:
-                current_hist = historical_data.iloc[-i]
-                hist_before = historical_data.iloc[:-i] if len(historical_data) > i else pd.DataFrame()
-                
-                # Engineer features for this timestep
-                timestep_features = feature_engineer.engineer_features(
-                    current_data=pd.DataFrame([current_hist]),
-                    historical_data=hist_before,
-                    pollutant=pollutant,
-                    horizon=horizon
-                )
-            else:
-                # Not enough history, pad with zeros
-                timestep_features = pd.DataFrame(
-                    np.zeros((1, len(feature_names))),
-                    columns=feature_names
-                )
-        
-        # Align to model features
-        aligned = timestep_features.reindex(
-            columns=feature_names,
-            fill_value=0.0
-        ).astype(np.float32)
-        
-        sequence_list.append(aligned.values[0])
-    
-    # Stack into 3D array: (sequence_length, n_features)
-    sequence = np.array(sequence_list, dtype=np.float32)
-    sequence = np.expand_dims(sequence, axis=0)  # Add batch dimension
-    
-    # 4. Scale features
-    seq_2d = sequence[0]  # Remove batch dimension for scaling
-    seq_scaled_2d = feature_scaler.transform(seq_2d)
-    seq_scaled_3d = np.expand_dims(seq_scaled_2d, axis=0)  # Add batch back
-    
-    # 5. Predict concentration (regression)
-    pred_scaled = keras_model.predict(seq_scaled_3d, verbose=0)
-    
-    # 6. Inverse transform to get actual concentration
-    pred_concentration = target_scaler.inverse_transform(pred_scaled)[0][0]
-    pred_concentration = float(np.clip(pred_concentration, 0, 1000))
-    
-    # 7. Map concentration to AQI category
-    category = concentration_to_category(pred_concentration, pollutant)
-    
-    return category, pred_concentration
+    features = feature_engineer.engineer_features(current_data, historical_data, pollutant, horizon)
+    aligned = feature_engineer.align_features(features, model['feature_names'])
+    probs = model['calibrated_model'].predict_proba(aligned)[0]
+    pred_idx = np.argmax(probs)
+    return model['classes'][pred_idx], probs[pred_idx]
 
 def extract_weather_data(current_data: pd.DataFrame) -> Dict:
     """Extract weather parameters from current data row"""
@@ -528,13 +390,13 @@ def extract_weather_data(current_data: pd.DataFrame) -> Dict:
                 # Convert Fahrenheit to Celsius for temperature fields
                 if feature in ['temperature', 'dewPoint', 'apparentTemperature'] and value > 50:
                     value = (value - 32) * 5 / 9
-                    logger.info(f"Converted {feature}: {original_value:.1f}°F → {value:.1f}°C")
+                    logger.info(f"Converted {feature}: {original_value:.1f}Â°F â†’ {value:.1f}Â°C")
                 
                 weather[feature] = value
             else:
                 weather[feature] = 0.0
     
-    logger.info(f"Weather extracted: temperature={weather.get('temperature', 0):.1f}°C, humidity={weather.get('humidity', 0):.1f}%, windSpeed={weather.get('windSpeed', 0):.1f} km/h")
+    logger.info(f"Weather extracted: temperature={weather.get('temperature', 0):.1f}Â°C, humidity={weather.get('humidity', 0):.1f}%, windSpeed={weather.get('windSpeed', 0):.1f} km/h")
     return weather
 
 def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, standard: str = 'IN'):
@@ -579,7 +441,7 @@ def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, stand
                     'aqi': round(aqi_value, 1)
                 })
         
-        logger.info(f"✓ Prepared {len(historical_aqi)} historical AQI data points")
+        logger.info(f"âœ“ Prepared {len(historical_aqi)} historical AQI data points")
     
     results['historical'] = historical_aqi
     
@@ -590,65 +452,180 @@ def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, stand
             logger.warning(f"{pollutant} not in data columns")
             for horizon in ['1h', '6h', '12h', '24h']:
                 results[pollutant][horizon] = {
-                    'category': 'Unknown',
-                    'predicted_value': 0.0,
-                    'confidence': None,
-                    'aqi_min': 0,
-                    'aqi_max': 0,
-                    'aqi_mid': 0,
-                    'concentration_range': (0, 0),
-                    'error': f'{pollutant} data not available'
+                    'category': 'Unknown', 'confidence': 0.0,
+                    'aqi_min': 0, 'aqi_max': 0, 'aqi_mid': 0,
+                    'concentration_range': (0, 0), 'error': f'{pollutant} data not available'
                 }
             continue
         
         for horizon in ['1h', '6h', '12h', '24h']:
             try:
-                category, pred_value = predict_single(current_data, historical_data, pollutant, horizon)
-                sub_idx = aqi_calculator.calculate_sub_index(pollutant, category, pred_value, standard)
+                category, confidence = predict_single(current_data, historical_data, pollutant, horizon)
+                sub_idx = aqi_calculator.calculate_sub_index(pollutant, category, confidence, standard)
                 results[pollutant][horizon] = {
-                    'category': category,
-                    'predicted_value': pred_value,
-                    'confidence': None,
-                    'aqi_min': sub_idx['aqi_min'],
-                    'aqi_max': sub_idx['aqi_max'],
+                    'category': category, 'confidence': confidence,
+                    'aqi_min': sub_idx['aqi_min'], 'aqi_max': sub_idx['aqi_max'],
                     'aqi_mid': sub_idx['aqi_mid'],
                     'concentration_range': sub_idx['concentration_range']
                 }
-                logger.info(f"✓ {pollutant} {horizon}: {pred_value:.2f} µg/m³ → {category}")
+                logger.info(f"âœ“ {pollutant} {horizon}: {category} ({confidence:.2%})")
             except Exception as e:
                 logger.error(f"Failed {pollutant} {horizon}: {e}")
                 results[pollutant][horizon] = {
-                    'category': 'Unknown',
-                    'predicted_value': 0.0,
-                    'confidence': None,
-                    'aqi_min': 0,
-                    'aqi_max': 0,
-                    'aqi_mid': 0,
-                    'concentration_range': (0, 0),
-                    'error': str(e)
+                    'category': 'Unknown', 'confidence': 0.0,
+                    'aqi_min': 0, 'aqi_max': 0, 'aqi_mid': 0,
+                    'concentration_range': (0, 0), 'error': str(e)
                 }
     
     # Calculate overall AQI
     results['overall'] = {}
     for horizon in ['1h', '6h', '12h', '24h']:
-        preds = {p: (results[p][horizon]['category'], 
-                     results[p][horizon].get('predicted_value'))
-                for p in ['PM25', 'PM10', 'NO2', 'OZONE']
-                if 'error' not in results[p][horizon]}
+        preds = {p: (results[p][horizon]['category'], results[p][horizon]['confidence'])
+                for p in ['PM25', 'PM10', 'NO2', 'OZONE'] if 'error' not in results[p][horizon]}
         
         if preds:
             results['overall'][horizon] = aqi_calculator.calculate_overall(preds, standard)
         else:
             results['overall'][horizon] = {
-                'aqi_min': 0,
-                'aqi_max': 0,
-                'aqi_mid': 0,
-                'category': 'Unknown',
-                'dominant_pollutant': 'None',
-                'confidence': None
+                'aqi_min': 0, 'aqi_max': 0, 'aqi_mid': 0,
+                'category': 'Unknown', 'dominant_pollutant': 'None', 'confidence': 0.0
             }
     
     return results
+
+# ============================================================================
+# RESPONSE VALIDATOR
+# ============================================================================
+
+class ResponseValidator:
+    """Validates LLM responses for safety, accuracy, and structure"""
+    
+    FORBIDDEN_PHRASES = [
+        'diagnose', 'diagnosis', 'cure', 'treatment', 'medication',
+        'prescribe', 'prescription', 'take this medicine',
+        'definitely have', 'you have a disease', 'medical condition'
+    ]
+    
+    REQUIRED_DISCLAIMER = "**Important:** This is not medical advice"
+    DISCLAIMER_TEXT = "\n\n⚠️ **Important:** This is not medical advice. Please consult a healthcare professional for diagnosis or treatment."
+    
+    @staticmethod
+    def ensure_structure(response: str, context: Dict) -> str:
+        """Ensure response has proper structure with sections"""
+        
+        # Check if response already has good structure (has section headers)
+        has_structure = ('**Current Situation:**' in response or 
+                        '**Your Risk Level:**' in response or
+                        '**Recommended Actions:**' in response)
+        
+        if has_structure:
+            # Response already structured, just clean it up
+            return response.strip()
+        
+        # If not structured, try to add basic structure
+        # Split into paragraphs
+        paragraphs = [p.strip() for p in response.split('\n\n') if p.strip()]
+        
+        if len(paragraphs) >= 2:
+            # Try to structure it
+            structured = f"**Current Situation:**\n{paragraphs[0]}\n\n"
+            
+            if len(paragraphs) >= 3:
+                structured += f"**Recommended Actions:**\n{paragraphs[1]}\n\n"
+                structured += '\n\n'.join(paragraphs[2:])
+            else:
+                structured += '\n\n'.join(paragraphs[1:])
+            
+            return structured
+        
+        return response
+    
+    @staticmethod
+    def validate_response(response: str, context: Dict) -> Dict:
+        """
+        Validate LLM response for safety, grounding, and structure
+        
+        Returns:
+            {
+                'valid': bool,
+                'warnings': List[str],
+                'modified_response': str (if modifications needed)
+            }
+        """
+        warnings = []
+        valid = True
+        
+        # 1. Check for forbidden medical terms
+        response_lower = response.lower()
+        for phrase in ResponseValidator.FORBIDDEN_PHRASES:
+            if phrase in response_lower:
+                warnings.append(f"Contains forbidden medical term: '{phrase}'")
+                valid = False
+        
+        # 2. Check response length (too short may indicate error)
+        if len(response.strip()) < 50:
+            warnings.append("Response too short - may be incomplete")
+            valid = False
+            # For very short responses, don't modify further
+            return {
+                'valid': valid,
+                'warnings': warnings,
+                'modified_response': response
+            }
+        
+        # 3. Ensure structure
+        modified_response = ResponseValidator.ensure_structure(response, context)
+        
+        # 4. Check data grounding
+        if context.get('aqi_data'):
+            aqi_mid = context['aqi_data'].get('aqi_mid', 0)
+            if aqi_mid > 0 and str(int(aqi_mid)) not in modified_response and 'AQI' not in modified_response.upper():
+                warnings.append("Response may not be grounded in provided AQI data")
+        
+        # 5. Check for hallucinated temperature data
+        if context.get('weather'):
+            temp = context['weather'].get('temperature', 0)
+            temp_mentions = re.findall(r'(\d+)\s*°?[Cc]', modified_response)
+            if temp_mentions and temp > 0:
+                for temp_str in temp_mentions:
+                    try:
+                        mentioned_temp = int(temp_str)
+                        if abs(mentioned_temp - temp) > 10:
+                            warnings.append(f"Temperature mismatch: mentioned {mentioned_temp}°C but actual is {temp:.1f}°C")
+                    except ValueError:
+                        pass
+        
+        # 6. ALWAYS ensure medical disclaimer is at the end (do this last)
+        # Remove any existing disclaimers first to avoid duplicates
+        disclaimer_patterns = [
+            r'\n*\s*⚠️\s*\*\*Important:\*\*.*?medical advice.*?(?:\n\n|\Z)',
+            r'\n*\s*\*\*Important:\*\*\s*This is not medical advice.*?(?:\n\n|\Z)',
+            r'\n*\s*This is not medical advice.*?(?:\n\n|\Z)',
+            r'\n*\s*⚠.*?medical advice.*?(?:\n\n|\Z)'
+        ]
+        
+        for pattern in disclaimer_patterns:
+            modified_response = re.sub(pattern, '', modified_response, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Clean up trailing whitespace
+        modified_response = modified_response.strip()
+        
+        # Add the disclaimer at the end
+        modified_response = modified_response + ResponseValidator.DISCLAIMER_TEXT
+        
+        # 7. Final check: ensure disclaimer is present
+        if ResponseValidator.REQUIRED_DISCLAIMER not in modified_response:
+            warnings.append("Disclaimer could not be added properly")
+            # Force add it again
+            modified_response = modified_response + ResponseValidator.DISCLAIMER_TEXT
+        
+        return {
+            'valid': valid,
+            'warnings': warnings,
+            'modified_response': modified_response
+        }
+
+response_validator = ResponseValidator()
 
 # ============================================================================
 # GEMINI AI ASSISTANT - ENHANCED VERSION
@@ -948,10 +925,10 @@ class GeminiAssistant:
                 'situation': f"Air quality is moderate with AQI {aqi_mid:.0f}. Sensitive groups should be cautious.",
                 'risk': 'Moderate Risk - Caution for sensitive groups',
                 'actions': [
-                    "âš Limit prolonged outdoor activities for sensitive groups",
-                    "âš Consider wearing masks for extended outdoor exposure",
-                    "âš Children and elderly should reduce outdoor time",
-                    "âš Use air purifiers indoors if available"
+                    "âš  Limit prolonged outdoor activities for sensitive groups",
+                    "âš  Consider wearing masks for extended outdoor exposure",
+                    "âš  Children and elderly should reduce outdoor time",
+                    "âš  Use air purifiers indoors if available"
                 ]
             },
             'Poor': {
@@ -1040,40 +1017,39 @@ gemini_assistant = GeminiAssistant()
 @app.get("/")
 async def root():
     return {
-        "message": "AQI Dashboard API - LSTM Version (Lat/Long Matching)",
-        "version": "2.1.0",
+        "message": "AQI Dashboard API - Enhanced Version",
+        "version": "2.0.0",
         "status": "running",
-        "model_type": "LSTM Regression",
-        "matching_method": "Latitude/Longitude coordinates"
+        "features": [
+            "AI-powered health advice",
+            "Response validation",
+            "Safety guardrails",
+            "Multilingual support",
+            "Personalized recommendations"
+        ]
     }
 
 @app.get("/api/regions")
 async def get_regions():
     """Get all available regions"""
     try:
-        regions = data_manager.get_regions()
-        logger.info(f"Returning {len(regions)} regions")
-        return regions
+        return data_manager.get_regions()
     except Exception as e:
-        logger.error(f"Error getting regions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/locations/{region}")
 async def get_locations(region: str):
     """Get locations for a specific region"""
     try:
-        locations = data_manager.get_locations_by_region(region)
-        logger.info(f"Returning {len(locations)} locations for region: {region}")
-        return locations
+        return data_manager.get_locations_by_region(region)
     except Exception as e:
-        logger.error(f"Error getting locations for {region}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/predict")
 async def predict(request: PredictionRequest):
     """Get AQI predictions for a location"""
     try:
-        logger.info(f"Prediction request for: {request.location} (standard: {request.standard})")
+        logger.info(f"Prediction request for: {request.location}")
         current, historical = data_manager.get_location_data(request.location)
         predictions = predict_all(current, historical, request.standard)
         return predictions
@@ -1083,8 +1059,9 @@ async def predict(request: PredictionRequest):
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
-    """Chat with AI assistant"""
+    """Chat with AI assistant with validation"""
     try:
+        # Build context
         context = {
             'location': request.location,
             'aqi_data': request.aqi_data,
@@ -1092,7 +1069,9 @@ async def chat(request: ChatRequest):
             'weather': request.aqi_data.get('weather', {}) if request.aqi_data else {}
         }
         
+        # Get response with validation
         result = gemini_assistant.get_response(request.message, context)
+        
         return result
     except Exception as e:
         logger.error(f"Chat error: {e}", exc_info=True)
@@ -1103,76 +1082,18 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "version": "2.1.0",
-        "model_type": "LSTM",
-        "matching_method": "lat/long",
+        "version": "2.0.0",
         "data_loaded": len(data_manager.data) > 0,
-        "data_rows": len(data_manager.data),
         "locations": len(data_manager.whitelist),
-        "regions": len(data_manager.get_regions()),
-        "gemini_enabled": gemini_assistant.enabled
+        "gemini_enabled": gemini_assistant.enabled,
+        "gemini_model": gemini_assistant.model_name if gemini_assistant.enabled else "disabled",
+        "features": {
+            "response_validation": True,
+            "safety_guardrails": True,
+            "medical_disclaimer": True,
+            "data_grounding": True
+        }
     }
-
-@app.get("/api/debug/whitelist")
-async def debug_whitelist():
-    """Debug endpoint to view whitelist locations"""
-    try:
-        return {
-            "total_locations": len(data_manager.whitelist),
-            "regions": data_manager.get_regions(),
-            "sample_locations": {
-                name: {
-                    "region": info['region'],
-                    "lat": info['lat'],
-                    "lon": info['lon'],
-                    "area": info['area']
-                }
-                for name, info in list(data_manager.whitelist.items())[:10]
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/debug/location/{location_name}")
-async def debug_location(location_name: str):
-    """Debug endpoint to check coordinate matching for a specific location"""
-    try:
-        if location_name not in data_manager.whitelist:
-            raise HTTPException(status_code=404, detail=f"Location '{location_name}' not found in whitelist")
-        
-        loc = data_manager.whitelist[location_name]
-        lat, lon = loc['lat'], loc['lon']
-        
-        # Check data availability at different tolerance levels
-        tolerance_checks = []
-        for tolerance, description in [
-            (0.0001, "~11 meters"),
-            (0.001, "~111 meters"),
-            (0.01, "~1.1 km"),
-            (0.05, "~5.5 km")
-        ]:
-            mask = ((np.abs(data_manager.data['lat'] - lat) < tolerance) & 
-                   (np.abs(data_manager.data['lon'] - lon) < tolerance))
-            matched_data = data_manager.data[mask]
-            
-            tolerance_checks.append({
-                "tolerance": tolerance,
-                "description": description,
-                "rows_found": len(matched_data),
-                "unique_timestamps": len(matched_data['timestamp'].unique()) if len(matched_data) > 0 else 0
-            })
-        
-        return {
-            "location": location_name,
-            "whitelist_info": loc,
-            "coordinates": {"lat": lat, "lon": lon},
-            "tolerance_checks": tolerance_checks,
-            "recommendation": "Use smallest tolerance with sufficient data (>100 rows recommended)"
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================================================
 # RUN SERVER
