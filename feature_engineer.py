@@ -1,11 +1,11 @@
 """
-Complete Feature Engineering Pipeline - ENHANCED VERSION
-Automatically creates ALL missing features from your inference CSV
+OPTIMIZED Feature Engineering Pipeline for LSTM Sequences
+Handles batch feature engineering to avoid repeated calculations
 """
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,12 +13,7 @@ logger = logging.getLogger(__name__)
 
 class FeatureEngineer:
     """
-    Creates features matching training pipeline for PM2.5, PM10, NO2, OZONE
-    
-    ENHANCED: Now automatically creates:
-    - weekday from date
-    - All 11 cyclical temporal encodings
-    - All 7 spatial features (with defaults if data unavailable)
+    OPTIMIZED: Creates features for LSTM models with efficient sequence building
     """
     
     # Weather features (raw)
@@ -28,332 +23,234 @@ class FeatureEngineer:
         'cloudCover', 'windSpeed', 'windBearing', 'windGust'
     ]
     
-    # Lag windows - CORRECTED
+    # Lag windows
     LAG_WINDOWS = {
         '1h': [1, 2, 3, 6, 12, 24],
         '6h': [6, 12, 24, 48],
         '12h': [12, 24, 48, 72],
-        '24h': [24, 48, 72, 96, 168]  # ← Includes 168h lag
+        '24h': [24, 48, 72, 96, 168]
     }
     
-    # Rolling windows - CORRECTED
+    # Rolling windows
     ROLLING_WINDOWS = {
-        '1h': [6, 12, 24, 48],  # ← 1h now has rolling features
+        '1h': [6, 12, 24, 48],
         '6h': [6, 12],
         '12h': [12, 24],
         '24h': [24, 48]
     }
     
-    WEATHER_ROLLING_WINDOWS = [6, 12, 24]
-    
     def __init__(self):
         self.feature_cache = {}
     
-    def engineer_features(self, 
-                         current_data: pd.DataFrame, 
-                         historical_data: pd.DataFrame,
-                         pollutant: str,
-                         horizon: str) -> pd.DataFrame:
+    def engineer_features_batch(self,
+                               historical_data: pd.DataFrame,
+                               pollutant: str,
+                               horizon: str,
+                               sequence_length: int) -> pd.DataFrame:
         """
-        Create features for prediction
+        OPTIMIZED: Engineer features for entire sequence at once
         
         Args:
-            current_data: Current timestamp data (single row)
-            historical_data: Historical data sorted by timestamp (for lags)
-            pollutant: 'PM25' | 'PM10' | 'NO2' | 'OZONE'
-            horizon: '1h' | '6h' | '12h' | '24h'
-        
+            historical_data: Historical data (last N rows for sequence)
+            pollutant: Target pollutant
+            horizon: Forecast horizon
+            sequence_length: Number of timesteps needed
+            
         Returns:
-            DataFrame with engineered features (single row)
+            DataFrame with all timesteps' features (sequence_length rows)
         """
         try:
-            # Start with current data
-            features = current_data.copy()
+            # Ensure we have enough data
+            if len(historical_data) < sequence_length:
+                logger.warning(f"Not enough historical data: {len(historical_data)} < {sequence_length}")
+                # Pad with first row if needed
+                padding_rows = sequence_length - len(historical_data)
+                if padding_rows > 0:
+                    first_row = historical_data.iloc[[0]]
+                    padding = pd.concat([first_row] * padding_rows, ignore_index=True)
+                    historical_data = pd.concat([padding, historical_data], ignore_index=True)
             
-            # Ensure we have a clean copy
-            if len(features) > 1:
-                features = features.iloc[[-1]].copy()
+            # Take last sequence_length rows
+            sequence_data = historical_data.tail(sequence_length).copy().reset_index(drop=True)
             
-            # 0. Add missing base features (weekday, cyclical, spatial)
-            features = self._add_missing_base_features(features)
+            # 1. Add missing base features (ONCE for entire dataframe)
+            sequence_data = self._add_missing_base_features_batch(sequence_data)
             
-            # 1. Create lag features
-            features = self._add_lag_features(
-                features, historical_data, pollutant, horizon
-            )
+            # 2. Add lag features (vectorized)
+            sequence_data = self._add_lag_features_batch(sequence_data, pollutant, horizon)
             
-            # 2. Create pollutant rolling features
-            features = self._add_pollutant_rolling(
-                features, historical_data, pollutant, horizon
-            )
+            # 3. Add rolling features (vectorized)
+            sequence_data = self._add_pollutant_rolling_batch(sequence_data, pollutant, horizon)
             
-            # 3. Create weather rolling features
-            features = self._add_weather_rolling(
-                features, historical_data, horizon
-            )
+            # 4. Add weather rolling (vectorized)
+            sequence_data = self._add_weather_rolling_batch(sequence_data, horizon)
             
-            # 4. Add enhanced interaction features
-            features = self._add_enhanced_features(features, pollutant)
+            # 5. Select features
+            sequence_data = self._select_horizon_features(sequence_data, pollutant, horizon)
             
-            # 5. Select features based on horizon
-            features = self._select_horizon_features(
-                features, pollutant, horizon
-            )
+            # 6. Finalize
+            sequence_data = self._finalize_features(sequence_data)
             
-            # 6. Fill nulls and cast to float32
-            features = self._finalize_features(features)
+            logger.info(f"Batch engineered {len(sequence_data)} rows × {len(sequence_data.columns)} features for {pollutant} {horizon}")
             
-            logger.info(f"Engineered {len(features.columns)} features for {pollutant} {horizon}")
-            
-            return features
+            return sequence_data
             
         except Exception as e:
-            logger.error(f"Feature engineering failed: {e}")
+            logger.error(f"Batch feature engineering failed: {e}", exc_info=True)
             raise
     
-    def _add_missing_base_features(self, features: pd.DataFrame) -> pd.DataFrame:
-        """
-        Add any missing base features that should be present
+    def _add_missing_base_features_batch(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Add base features for entire batch at once"""
         
-        Creates:
-        - weekday (if missing)
-        - All cyclical temporal encodings (11 features)
-        - Spatial features (7 features, with defaults)
-        """
-        
-        # 1. Add weekday if missing
-        if 'weekday' not in features.columns:
-            if 'date' in features.columns:
-                features['weekday'] = pd.to_datetime(features['date']).dt.weekday
-                logger.info("Created weekday from date column")
-            elif all(col in features.columns for col in ['year', 'month', 'day']):
-                # Reconstruct date from year/month/day
-                date_str = f"{int(features['year'].iloc[0])}-{int(features['month'].iloc[0]):02d}-{int(features['day'].iloc[0]):02d}"
-                date = pd.to_datetime(date_str)
-                features['weekday'] = date.weekday()
-                logger.info("Created weekday from year/month/day")
+        # Add weekday if missing
+        if 'weekday' not in data.columns:
+            if 'date' in data.columns:
+                data['weekday'] = pd.to_datetime(data['date']).dt.weekday
+            elif all(col in data.columns for col in ['year', 'month', 'day']):
+                dates = pd.to_datetime(data[['year', 'month', 'day']])
+                data['weekday'] = dates.dt.weekday
             else:
-                # Default to weekday 0 (Monday)
-                features['weekday'] = 0
-                logger.warning("Could not determine weekday, defaulting to 0")
+                data['weekday'] = 0
         
-        # 2. Add cyclical temporal encodings
-        features = self._add_cyclical_encodings(features)
+        # Add cyclical encodings (vectorized)
+        data = self._add_cyclical_encodings_batch(data)
         
-        # 3. Add spatial features (with defaults if not present)
-        features = self._add_spatial_features(features)
+        # Add spatial features
+        data = self._add_spatial_features_batch(data)
         
-        return features
+        return data
     
-    def _add_cyclical_encodings(self, features: pd.DataFrame) -> pd.DataFrame:
-        """
-        Add cyclical temporal encodings using sine/cosine transformations
+    def _add_cyclical_encodings_batch(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Vectorized cyclical encoding for entire batch"""
         
-        Creates 11 features:
-        - hour_sin, hour_cos (from hour)
-        - dow_sin, dow_cos (from weekday)
-        - week_sin, week_cos (from date/week of year)
-        - month_sin, month_cos (from month)
-        - doy_sin, doy_cos (from date/day of year)
-        - is_weekend (binary from weekday)
-        """
+        # Hour encodings
+        if 'hour' in data.columns:
+            data['hour_sin'] = np.sin(2 * np.pi * data['hour'] / 24)
+            data['hour_cos'] = np.cos(2 * np.pi * data['hour'] / 24)
         
-        # Hour encodings (0-23)
-        if 'hour' in features.columns:
-            features['hour_sin'] = np.sin(2 * np.pi * features['hour'] / 24)
-            features['hour_cos'] = np.cos(2 * np.pi * features['hour'] / 24)
+        # Day of week encodings
+        if 'weekday' in data.columns:
+            data['dow_sin'] = np.sin(2 * np.pi * data['weekday'] / 7)
+            data['dow_cos'] = np.cos(2 * np.pi * data['weekday'] / 7)
+            data['is_weekend'] = (data['weekday'] >= 5).astype(int)
         
-        # Day of week encodings (0-6, where 0=Monday)
-        if 'weekday' in features.columns:
-            features['dow_sin'] = np.sin(2 * np.pi * features['weekday'] / 7)
-            features['dow_cos'] = np.cos(2 * np.pi * features['weekday'] / 7)
-            features['is_weekend'] = (features['weekday'] >= 5).astype(int)
-        
-        # Week of year (1-52)
-        if 'date' in features.columns:
-            date = pd.to_datetime(features['date'])
-            week_of_year = date.dt.isocalendar().week.iloc[0]
-            features['week_sin'] = np.sin(2 * np.pi * week_of_year / 52)
-            features['week_cos'] = np.cos(2 * np.pi * week_of_year / 52)
-        elif all(col in features.columns for col in ['year', 'month', 'day']):
-            # Reconstruct date
-            date_str = f"{int(features['year'].iloc[0])}-{int(features['month'].iloc[0]):02d}-{int(features['day'].iloc[0]):02d}"
-            date = pd.to_datetime(date_str)
-            week_of_year = date.isocalendar().week
-            features['week_sin'] = np.sin(2 * np.pi * week_of_year / 52)
-            features['week_cos'] = np.cos(2 * np.pi * week_of_year / 52)
+        # Week of year
+        if 'date' in data.columns:
+            dates = pd.to_datetime(data['date'])
+            week_of_year = dates.dt.isocalendar().week
+            data['week_sin'] = np.sin(2 * np.pi * week_of_year / 52)
+            data['week_cos'] = np.cos(2 * np.pi * week_of_year / 52)
+        elif all(col in data.columns for col in ['year', 'month', 'day']):
+            dates = pd.to_datetime(data[['year', 'month', 'day']])
+            week_of_year = dates.dt.isocalendar().week
+            data['week_sin'] = np.sin(2 * np.pi * week_of_year / 52)
+            data['week_cos'] = np.cos(2 * np.pi * week_of_year / 52)
         else:
-            # Default to middle of year
-            features['week_sin'] = 0.0
-            features['week_cos'] = 1.0
+            data['week_sin'] = 0.0
+            data['week_cos'] = 1.0
         
-        # Month encodings (1-12)
-        if 'month' in features.columns:
-            features['month_sin'] = np.sin(2 * np.pi * features['month'] / 12)
-            features['month_cos'] = np.cos(2 * np.pi * features['month'] / 12)
+        # Month encodings
+        if 'month' in data.columns:
+            data['month_sin'] = np.sin(2 * np.pi * data['month'] / 12)
+            data['month_cos'] = np.cos(2 * np.pi * data['month'] / 12)
         
-        # Day of year (1-365)
-        if 'date' in features.columns:
-            date = pd.to_datetime(features['date'])
-            day_of_year = date.dt.dayofyear.iloc[0]
-            features['doy_sin'] = np.sin(2 * np.pi * day_of_year / 365)
-            features['doy_cos'] = np.cos(2 * np.pi * day_of_year / 365)
-        elif all(col in features.columns for col in ['year', 'month', 'day']):
-            # Reconstruct date
-            date_str = f"{int(features['year'].iloc[0])}-{int(features['month'].iloc[0]):02d}-{int(features['day'].iloc[0]):02d}"
-            date = pd.to_datetime(date_str)
-            day_of_year = date.dayofyear
-            features['doy_sin'] = np.sin(2 * np.pi * day_of_year / 365)
-            features['doy_cos'] = np.cos(2 * np.pi * day_of_year / 365)
+        # Day of year
+        if 'date' in data.columns:
+            dates = pd.to_datetime(data['date'])
+            day_of_year = dates.dt.dayofyear
+            data['doy_sin'] = np.sin(2 * np.pi * day_of_year / 365)
+            data['doy_cos'] = np.cos(2 * np.pi * day_of_year / 365)
+        elif all(col in data.columns for col in ['year', 'month', 'day']):
+            dates = pd.to_datetime(data[['year', 'month', 'day']])
+            day_of_year = dates.dt.dayofyear
+            data['doy_sin'] = np.sin(2 * np.pi * day_of_year / 365)
+            data['doy_cos'] = np.cos(2 * np.pi * day_of_year / 365)
         else:
-            # Default to middle of year
-            features['doy_sin'] = 0.0
-            features['doy_cos'] = 1.0
+            data['doy_sin'] = 0.0
+            data['doy_cos'] = 1.0
         
-        logger.info("Created cyclical temporal encodings")
-        return features
+        return data
     
-    def _add_spatial_features(self, features: pd.DataFrame) -> pd.DataFrame:
-        """
-        Add spatial exposure features
+    def _add_spatial_features_batch(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Add spatial features (defaults if not present)"""
         
-        If these columns don't exist in your data, creates them with default values.
-        Ideally, these should be pre-computed based on your location data.
-        
-        Creates 7 features:
-        - traffic_density_score
-        - industrial_proximity
-        - industrial_density_score
-        - near_industrial_1km (binary)
-        - near_industrial_3km (binary)
-        - near_industrial_5km (binary)
-        - exposure_index
-        """
-        
-        spatial_features = {
-            'traffic_density_score': 0.0,      # Default: no traffic exposure
-            'industrial_proximity': 10.0,       # Default: 10km away
-            'industrial_density_score': 0.0,    # Default: no industrial exposure
-            'near_industrial_1km': 0,           # Default: not near industry
+        spatial_defaults = {
+            'traffic_density_score': 0.0,
+            'industrial_proximity': 10.0,
+            'industrial_density_score': 0.0,
+            'near_industrial_1km': 0,
             'near_industrial_3km': 0,
             'near_industrial_5km': 0,
-            'exposure_index': 0.0               # Default: low exposure
+            'exposure_index': 0.0
         }
         
-        # Only add if they don't already exist
-        for feat_name, default_value in spatial_features.items():
-            if feat_name not in features.columns:
-                features[feat_name] = default_value
+        for feat_name, default_value in spatial_defaults.items():
+            if feat_name not in data.columns:
+                data[feat_name] = default_value
         
-        # Log if we used defaults
-        missing_spatial = [f for f in spatial_features.keys() if f not in features.columns]
-        if missing_spatial:
-            logger.info(f"Created spatial features with defaults: {missing_spatial}")
-        
-        return features
+        return data
     
-    def _add_lag_features(self, 
-                         current: pd.DataFrame,
-                         historical: pd.DataFrame,
-                         pollutant: str,
-                         horizon: str) -> pd.DataFrame:
-        """
-        Add lag features based on horizon
+    def _add_lag_features_batch(self,
+                                data: pd.DataFrame,
+                                pollutant: str,
+                                horizon: str) -> pd.DataFrame:
+        """Vectorized lag feature creation"""
         
-        CORRECTED LAG WINDOWS:
-        1h: lags at 1, 2, 3, 6, 12, 24
-        6h: lags at 6, 12, 24, 48
-        12h: lags at 12, 24, 48, 72
-        24h: lags at 24, 48, 72, 96, 168 ← FIXED: Added 168h
-        """
         lags = self.LAG_WINDOWS[horizon]
         
-        # Ensure pollutant column exists
-        if pollutant not in historical.columns:
-            logger.warning(f"{pollutant} not found in historical data")
+        if pollutant not in data.columns:
             for lag in lags:
-                current.loc[current.index[0], f'{pollutant}_lag_{lag}h'] = np.nan
-            return current
+                data[f'{pollutant}_lag_{lag}h'] = np.nan
+            return data
         
+        # Use shift() for vectorized lag creation
         for lag in lags:
-            lag_col = f'{pollutant}_lag_{lag}h'
-            if len(historical) >= lag:
-                current.loc[current.index[0], lag_col] = historical[pollutant].iloc[-lag]
-            else:
-                current.loc[current.index[0], lag_col] = np.nan
+            data[f'{pollutant}_lag_{lag}h'] = data[pollutant].shift(lag)
         
-        return current
+        return data
     
-    def _add_pollutant_rolling(self,
-                              current: pd.DataFrame,
-                              historical: pd.DataFrame,
-                              pollutant: str,
-                              horizon: str) -> pd.DataFrame:
-        """
-        Add rolling statistics for pollutant
+    def _add_pollutant_rolling_batch(self,
+                                     data: pd.DataFrame,
+                                     pollutant: str,
+                                     horizon: str) -> pd.DataFrame:
+        """Vectorized rolling statistics"""
         
-        CORRECTED LOGIC:
-        - 1h: rolling 6h, 12h, 24h, 48h (ONLY mean & std, no min/max)
-        - 6h: rolling 6h, 12h (mean, std, min, max)
-        - 12h: rolling 12h, 24h (mean, std, min, max)
-        - 24h: rolling 24h, 48h (mean, std, min, max)
-        """
         windows = self.ROLLING_WINDOWS[horizon]
         
-        if pollutant not in historical.columns:
+        if pollutant not in data.columns:
             for window in windows:
                 if horizon == '1h':
-                    # 1h: Only mean and std
-                    current.loc[current.index[0], f'{pollutant}_rolling_mean_{window}h'] = np.nan
-                    current.loc[current.index[0], f'{pollutant}_rolling_std_{window}h'] = np.nan
+                    data[f'{pollutant}_rolling_mean_{window}h'] = np.nan
+                    data[f'{pollutant}_rolling_std_{window}h'] = np.nan
                 else:
-                    # 6h/12h/24h: All four statistics
-                    current.loc[current.index[0], f'{pollutant}_rolling_mean_{window}h'] = np.nan
-                    current.loc[current.index[0], f'{pollutant}_rolling_std_{window}h'] = np.nan
-                    current.loc[current.index[0], f'{pollutant}_rolling_min_{window}h'] = np.nan
-                    current.loc[current.index[0], f'{pollutant}_rolling_max_{window}h'] = np.nan
-            return current
+                    data[f'{pollutant}_rolling_mean_{window}h'] = np.nan
+                    data[f'{pollutant}_rolling_std_{window}h'] = np.nan
+                    data[f'{pollutant}_rolling_min_{window}h'] = np.nan
+                    data[f'{pollutant}_rolling_max_{window}h'] = np.nan
+            return data
         
+        # Use rolling() for vectorized computation
         for window in windows:
-            if len(historical) >= window:
-                recent = historical[pollutant].tail(window)
-                
-                if horizon == '1h':
-                    # 1h: Only mean and std
-                    current.loc[current.index[0], f'{pollutant}_rolling_mean_{window}h'] = recent.mean()
-                    current.loc[current.index[0], f'{pollutant}_rolling_std_{window}h'] = recent.std()
-                else:
-                    # 6h/12h/24h: All four statistics
-                    current.loc[current.index[0], f'{pollutant}_rolling_mean_{window}h'] = recent.mean()
-                    current.loc[current.index[0], f'{pollutant}_rolling_std_{window}h'] = recent.std()
-                    current.loc[current.index[0], f'{pollutant}_rolling_min_{window}h'] = recent.min()
-                    current.loc[current.index[0], f'{pollutant}_rolling_max_{window}h'] = recent.max()
+            rolling = data[pollutant].rolling(window=window, min_periods=1)
+            
+            if horizon == '1h':
+                data[f'{pollutant}_rolling_mean_{window}h'] = rolling.mean()
+                data[f'{pollutant}_rolling_std_{window}h'] = rolling.std()
             else:
-                if horizon == '1h':
-                    # 1h: Only mean and std
-                    current.loc[current.index[0], f'{pollutant}_rolling_mean_{window}h'] = np.nan
-                    current.loc[current.index[0], f'{pollutant}_rolling_std_{window}h'] = np.nan
-                else:
-                    # 6h/12h/24h: All four statistics
-                    current.loc[current.index[0], f'{pollutant}_rolling_mean_{window}h'] = np.nan
-                    current.loc[current.index[0], f'{pollutant}_rolling_std_{window}h'] = np.nan
-                    current.loc[current.index[0], f'{pollutant}_rolling_min_{window}h'] = np.nan
-                    current.loc[current.index[0], f'{pollutant}_rolling_max_{window}h'] = np.nan
+                data[f'{pollutant}_rolling_mean_{window}h'] = rolling.mean()
+                data[f'{pollutant}_rolling_std_{window}h'] = rolling.std()
+                data[f'{pollutant}_rolling_min_{window}h'] = rolling.min()
+                data[f'{pollutant}_rolling_max_{window}h'] = rolling.max()
         
-        return current
+        return data
     
-    def _add_weather_rolling(self,
-                            current: pd.DataFrame,
-                            historical: pd.DataFrame,
-                            horizon: str) -> pd.DataFrame:
-        """
-        Add weather rolling statistics
+    def _add_weather_rolling_batch(self,
+                                   data: pd.DataFrame,
+                                   horizon: str) -> pd.DataFrame:
+        """Vectorized weather rolling statistics"""
         
-        CORRECTED NAMING: Now uses training format
-        - Format: {weather_var}_rolling_mean_{horizon}
-        """
         window_map = {
-            '1h': None,  # No weather rolling for 1h
+            '1h': None,
             '6h': 6,
             '12h': 12,
             '24h': 24
@@ -363,135 +260,49 @@ class FeatureEngineer:
         
         if window is not None:
             for feature in self.WEATHER_FEATURES:
-                if feature in historical.columns:
-                    if len(historical) >= window:
-                        recent = historical[feature].tail(window)
-                        # FIXED: Use training naming convention
-                        current.loc[current.index[0], f'{feature}_rolling_mean_{horizon}'] = recent.mean()
-                        current.loc[current.index[0], f'{feature}_rolling_std_{horizon}'] = recent.std()
-                    else:
-                        current.loc[current.index[0], f'{feature}_rolling_mean_{horizon}'] = np.nan
-                        current.loc[current.index[0], f'{feature}_rolling_std_{horizon}'] = np.nan
+                if feature in data.columns:
+                    rolling = data[feature].rolling(window=window, min_periods=1)
+                    data[f'{feature}_rolling_mean_{horizon}'] = rolling.mean()
+                    data[f'{feature}_rolling_std_{horizon}'] = rolling.std()
         
-        return current
-    
-    def _add_enhanced_features(self,
-                              features: pd.DataFrame,
-                              pollutant: str) -> pd.DataFrame:
-        """
-        Add interaction features computed during training
-        
-        NOTE: Only adds if the constituent features exist.
-        """
-        # Short/long change from lags
-        lag_cols = [col for col in features.columns if f'{pollutant}_lag_' in col]
-        
-        if len(lag_cols) >= 2:
-            features.loc[features.index[0], f'{pollutant}_short_change'] = (
-                features[lag_cols[0]].iloc[0] - features[lag_cols[1]].iloc[0]
-            )
-            
-            if len(lag_cols) > 2:
-                features.loc[features.index[0], f'{pollutant}_long_change'] = (
-                    features[lag_cols[0]].iloc[0] - features[lag_cols[-1]].iloc[0]
-                )
-        
-        # Weather deviations
-        weather_vars = ['temperature', 'humidity', 'pressure', 'windSpeed']
-        
-        for var in weather_vars:
-            if var in features.columns:
-                rolling_cols = [col for col in features.columns 
-                               if f'{var}_rolling_' in col and '_mean' in col]
-                
-                if rolling_cols:
-                    features.loc[features.index[0], f'{var}_deviation'] = (
-                        features[var].iloc[0] - features[rolling_cols[0]].iloc[0]
-                    )
-        
-        # Wind-humidity interaction (common to all pollutants)
-        if 'windSpeed' in features.columns and 'humidity' in features.columns:
-            features.loc[features.index[0], 'wind_humidity_interaction'] = (
-                features['windSpeed'].iloc[0] * features['humidity'].iloc[0]
-            )
-        
-        # Pollutant-specific interactions
-        if pollutant == 'OZONE':
-            if 'temperature' in features.columns and 'humidity' in features.columns:
-                features.loc[features.index[0], 'temp_humidity_interaction'] = (
-                    features['temperature'].iloc[0] * (100 - features['humidity'].iloc[0])
-                )
-            
-            if 'windSpeed' in features.columns and 'temperature' in features.columns:
-                features.loc[features.index[0], 'wind_temp_interaction'] = (
-                    features['windSpeed'].iloc[0] * features['temperature'].iloc[0]
-                )
-            
-            if 'cloudCover' in features.columns and 'temperature' in features.columns:
-                features.loc[features.index[0], 'cloud_temp_interaction'] = (
-                    (1 - features['cloudCover'].iloc[0]) * features['temperature'].iloc[0]
-                )
-        
-        elif pollutant == 'NO2':
-            if 'windSpeed' in features.columns and 'temperature' in features.columns:
-                features.loc[features.index[0], 'wind_temp_interaction'] = (
-                    features['windSpeed'].iloc[0] * features['temperature'].iloc[0]
-                )
-        
-        return features
+        return data
     
     def _select_horizon_features(self,
-                                features: pd.DataFrame,
+                                data: pd.DataFrame,
                                 pollutant: str,
                                 horizon: str) -> pd.DataFrame:
-        """
-        Select only features used for this horizon
-        """
-        # Exclude columns that should never be in model
+        """Select only relevant features"""
+        
         exclude_cols = {
             'location', 'location_aq', 'exposure_category',
             'region', 'season', 'timestamp', 'location_id',
-            'date', 'pincode', 'loc_key', 'loc_id',  # Added from your CSV
-            # Exclude contemporaneous pollutants (data leakage)
+            'date', 'pincode', 'loc_key', 'loc_id',
             'PM25', 'PM10', 'NO2', 'OZONE', 'CO', 'SO2', 'AQI',
-            # Exclude all targets
             'target_1h', 'target_6h', 'target_12h', 'target_24h'
         }
         
-        # Keep only numeric columns not in exclude list
         numeric_cols = [
-            col for col in features.columns
+            col for col in data.columns
             if col not in exclude_cols and 
-            pd.api.types.is_numeric_dtype(features[col])
+            pd.api.types.is_numeric_dtype(data[col])
         ]
         
-        return features[numeric_cols]
+        return data[numeric_cols]
     
-    def _finalize_features(self, features: pd.DataFrame) -> pd.DataFrame:
-        """
-        Final processing: fill nulls + cast to float32
-        """
-        # Fill nulls with column median
-        for col in features.columns:
-            if features[col].isna().any():
-                median_val = features[col].median()
-                if pd.isna(median_val):
-                    median_val = 0.0
-                features[col].fillna(median_val, inplace=True)
+    def _finalize_features(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Fill nulls and cast to float32"""
         
-        # If still nulls, fill with 0
-        features.fillna(0, inplace=True)
+        # Fill nulls with forward fill first, then backward fill, then 0
+        data = data.fillna(method='ffill').fillna(method='bfill').fillna(0)
         
         # Cast to float32
-        features = features.astype(np.float32)
+        data = data.astype(np.float32)
         
-        return features
+        return data
 
 
 class FeatureAligner:
-    """
-    Aligns features to match model's expected input
-    """
+    """Aligns features to match model's expected input"""
     
     def align_features(self,
                       features: pd.DataFrame,
@@ -500,7 +311,7 @@ class FeatureAligner:
         Reindex features to match model's training features
         
         Args:
-            features: Engineered features
+            features: Engineered features (can be multiple rows for sequence)
             model_features: Feature names from model artifact
         
         Returns:
@@ -512,6 +323,6 @@ class FeatureAligner:
         # Ensure float32
         aligned = aligned.astype(np.float32)
         
-        logger.info(f"Aligned to {len(aligned.columns)} model features")
+        logger.info(f"Aligned {len(aligned)} rows to {len(aligned.columns)} model features")
         
         return aligned
