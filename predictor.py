@@ -1,6 +1,6 @@
 """
-Complete Model Predictor with Comprehensive AQI Calculator - FIXED FILE PATHS
-Handles flat file structure: model_artifacts_POLLUTANT_HORIZON.pkl
+Complete LSTM Model Predictor with Comprehensive AQI Calculator
+Handles LSTM regression models with sequence generation
 """
 
 import pickle
@@ -10,13 +10,13 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import logging
 
+# Deep Learning imports for LSTM
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.models import load_model as keras_load_model
+
 # Import from same directory
 from feature_engineer import FeatureEngineer, FeatureAligner
-
-# try:
-#     from data.feature_engineer import FeatureEngineer, FeatureAligner
-# except ImportError:
-#     from feature_engineer import FeatureEngineer, FeatureAligner
 
 logger = logging.getLogger(__name__)
 
@@ -84,13 +84,16 @@ CATEGORY_MAPPING = {
 
 
 # ============================================================================
-# MODEL MANAGER - FIXED FOR FLAT FILE STRUCTURE
+# MODEL MANAGER - UPDATED FOR LSTM
 # ============================================================================
 
 class ModelManager:
     """
-    Loads and manages trained models for all pollutants and horizons
-    FIXED: Handles flat file structure model_artifacts_POLLUTANT_HORIZON.pkl
+    Loads and manages trained LSTM models for all pollutants and horizons
+    
+    Expected structure:
+    - model_path/POLLUTANT_HORIZON/lstm_pure_regression.h5
+    - model_path/POLLUTANT_HORIZON/model_artifacts.pkl
     """
     
     def __init__(self, model_path: Path):
@@ -99,33 +102,153 @@ class ModelManager:
     
     def load_model(self, pollutant: str, horizon: str) -> Dict:
         """
-        Load model artifact for specific pollutant and horizon
+        Load LSTM model and artifacts for specific pollutant and horizon
         
-        File naming: model_artifacts_POLLUTANT_HORIZON.pkl
-        Example: model_artifacts_PM25_1h.pkl
+        Directory structure: POLLUTANT_HORIZON/
+        Files:
+            - lstm_pure_regression.h5 (Keras model)
+            - model_artifacts.pkl (scalers, sequence_length, feature_names)
+        
+        Example: PM25_1h/lstm_pure_regression.h5
         """
         cache_key = f"{pollutant}_{horizon}"
         
         if cache_key in self.models:
             return self.models[cache_key]
         
-        # FIXED: New file naming convention
-        model_file = self.model_path / f"model_artifacts_{pollutant}_{horizon}.pkl"
+        # Construct paths
+        model_dir = self.model_path / f"{pollutant}_{horizon}"
+        keras_model_path = model_dir / "lstm_pure_regression.h5"
+        artifacts_path = model_dir / "model_artifacts.pkl"
         
-        if not model_file.exists():
-            raise FileNotFoundError(f"Model not found: {model_file}")
+        # Check files exist
+        if not keras_model_path.exists():
+            raise FileNotFoundError(
+                f"LSTM model not found: {keras_model_path}\n"
+                f"Expected structure: {model_dir}/lstm_pure_regression.h5"
+            )
+        if not artifacts_path.exists():
+            raise FileNotFoundError(
+                f"Model artifacts not found: {artifacts_path}\n"
+                f"Expected structure: {model_dir}/model_artifacts.pkl"
+            )
         
-        logger.info(f"Loading model: {pollutant} {horizon}")
+        logger.info(f"Loading LSTM model: {pollutant} {horizon}")
         
-        with open(model_file, 'rb') as f:
-            model_artifact = pickle.load(f)
+        # Load Keras model
+        keras_model = keras_load_model(str(keras_model_path), compile=False)
+        
+        # Load artifacts (scalers, sequence_length, feature_names)
+        with open(artifacts_path, 'rb') as f:
+            artifacts = pickle.load(f)
+        
+        # Combine into single dict
+        model_artifact = {
+            'model': keras_model,
+            'feature_scaler': artifacts['feature_scaler'],
+            'target_scaler': artifacts['target_scaler'],
+            'sequence_length': artifacts['sequence_length'],
+            'feature_names': artifacts.get('feature_names', []),
+            'training_history': artifacts.get('training_history', None)
+        }
         
         # Cache for future use
         self.models[cache_key] = model_artifact
         
-        logger.info(f"  ✓ Loaded model with {len(model_artifact['feature_names'])} features")
+        logger.info(f"  ✓ Loaded LSTM with {len(model_artifact['feature_names'])} features")
+        logger.info(f"  ✓ Sequence length: {model_artifact['sequence_length']}")
         
         return model_artifact
+
+
+# ============================================================================
+# SEQUENCE BUILDER FOR LSTM
+# ============================================================================
+
+class SequenceBuilder:
+    """
+    Builds sequences from historical data for LSTM input
+    LSTM requires 3D input: (batch_size, sequence_length, n_features)
+    """
+    
+    def create_sequence(self,
+                       current_features: pd.DataFrame,
+                       historical_data: pd.DataFrame,
+                       feature_engineer: FeatureEngineer,
+                       pollutant: str,
+                       horizon: str,
+                       feature_names: List[str],
+                       sequence_length: int) -> Tuple[np.ndarray, List[pd.DataFrame]]:
+        """
+        Create a sequence for LSTM prediction
+        
+        Args:
+            current_features: Engineered features for current timestep (1 row)
+            historical_data: Historical data (sorted by timestamp)
+            feature_engineer: Feature engineering instance
+            pollutant: Target pollutant
+            horizon: Prediction horizon
+            feature_names: Required feature names from model
+            sequence_length: Number of timesteps needed
+            
+        Returns:
+            3D array: (1, sequence_length, n_features)
+            List of engineered DataFrames for debugging
+        """
+        sequence_list = []
+        engineered_frames = []
+        
+        # Get enough historical rows (we need sequence_length timesteps)
+        if len(historical_data) < sequence_length:
+            logger.warning(
+                f"Insufficient history: {len(historical_data)} rows, need {sequence_length}. "
+                "Will pad with zeros."
+            )
+        
+        # Create features for each timestep in the sequence
+        for i in range(sequence_length - 1, -1, -1):  # Go backwards from current
+            if i == 0:
+                # Current timestep (already engineered)
+                timestep_features = current_features
+            else:
+                # Historical timestep
+                if len(historical_data) >= i:
+                    # Get data up to this timestep
+                    current_hist = historical_data.iloc[-i]
+                    hist_before = historical_data.iloc[:-i] if len(historical_data) > i else pd.DataFrame()
+                    
+                    # Engineer features for this timestep
+                    timestep_features = feature_engineer.engineer_features(
+                        current_data=pd.DataFrame([current_hist]),
+                        historical_data=hist_before,
+                        pollutant=pollutant,
+                        horizon=horizon
+                    )
+                else:
+                    # Not enough history, create zero features
+                    timestep_features = pd.DataFrame(
+                        np.zeros((1, len(feature_names))),
+                        columns=feature_names
+                    )
+            
+            # Align to model features
+            aligned = timestep_features.reindex(
+                columns=feature_names,
+                fill_value=0.0
+            ).astype(np.float32)
+            
+            sequence_list.append(aligned.values[0])
+            engineered_frames.append(aligned)
+        
+        # Stack into 3D array: (sequence_length, n_features)
+        sequence = np.array(sequence_list, dtype=np.float32)
+        
+        # Add batch dimension: (1, sequence_length, n_features)
+        sequence = np.expand_dims(sequence, axis=0)
+        
+        logger.debug(f"Created sequence shape: {sequence.shape}")
+        
+        return sequence, engineered_frames
 
 
 # ============================================================================
@@ -140,6 +263,26 @@ class AQICalculator:
         self.us_breakpoints = US_AQI_BREAKPOINTS
         self.indian_index = INDIAN_AQI_INDEX
         self.us_index = US_AQI_INDEX
+    
+    def concentration_to_category(self, concentration: float, pollutant: str) -> str:
+        """
+        Map predicted concentration to AQI category
+        
+        Args:
+            concentration: Predicted pollutant concentration (µg/m³)
+            pollutant: Pollutant name (PM25, PM10, NO2, OZONE)
+            
+        Returns:
+            Category name (Good, Satisfactory, Moderate, Poor, Very_Poor, Severe)
+        """
+        breakpoints = self.indian_breakpoints.get(pollutant, {})
+        
+        for category, (low, high) in breakpoints.items():
+            if low <= concentration <= high:
+                return category
+        
+        # If above all ranges, return Severe
+        return 'Severe'
     
     def category_to_aqi_range_indian(self, category: str) -> Tuple[int, int]:
         normalized_category = category.replace(' ', '_')
@@ -170,22 +313,36 @@ class AQICalculator:
         
         return (0, 0)
     
-    def calculate_sub_index_indian(self, pollutant: str, category: str, confidence: float) -> Dict:
+    def calculate_sub_index_indian(self, pollutant: str, category: str, 
+                                   predicted_value: Optional[float] = None) -> Dict:
+        """
+        Calculate AQI sub-index for Indian standard
+        
+        Args:
+            pollutant: Pollutant name
+            category: AQI category
+            predicted_value: Actual predicted concentration (optional)
+        """
         aqi_min, aqi_max = self.category_to_aqi_range_indian(category)
         conc_min, conc_max = self.get_concentration_range(pollutant, category, 'IN')
         
         return {
             'pollutant': pollutant,
             'category': category,
+            'predicted_value': predicted_value,
             'aqi_range': (aqi_min, aqi_max),
             'aqi_min': aqi_min,
             'aqi_max': aqi_max,
             'aqi_mid': (aqi_min + aqi_max) / 2,
             'concentration_range': (conc_min, conc_max),
-            'confidence': confidence
+            'confidence': None  # No confidence in regression models
         }
     
-    def calculate_sub_index_us(self, pollutant: str, category: str, confidence: float) -> Dict:
+    def calculate_sub_index_us(self, pollutant: str, category: str,
+                               predicted_value: Optional[float] = None) -> Dict:
+        """
+        Calculate AQI sub-index for US standard
+        """
         normalized_category = category.replace(' ', '_')
         us_category = CATEGORY_MAPPING.get(normalized_category, {}).get('us', 'Hazardous')
         aqi_min, aqi_max = self.category_to_aqi_range_us(category)
@@ -193,56 +350,61 @@ class AQICalculator:
         
         return {
             'pollutant': pollutant,
-            'indian_category': category,
-            'us_category': us_category,
+            'category': us_category,
+            'predicted_value': predicted_value,
             'aqi_range': (aqi_min, aqi_max),
             'aqi_min': aqi_min,
             'aqi_max': aqi_max,
             'aqi_mid': (aqi_min + aqi_max) / 2,
             'concentration_range': (conc_min, conc_max),
-            'confidence': confidence
+            'confidence': None
         }
     
-    def calculate_overall_aqi(self, predictions: Dict[str, Tuple[str, float]], standard: str = 'IN') -> Dict:
-        sub_indices = []
+    def calculate_overall_aqi(self, predictions: Dict[str, Tuple[str, Optional[float]]], 
+                             standard: str = 'IN') -> Dict:
+        """
+        Calculate overall AQI from multiple pollutant predictions
         
-        for pollutant, (category, confidence) in predictions.items():
-            if pollutant in ['PM25', 'PM10', 'NO2', 'OZONE']:
-                try:
-                    if standard == 'IN':
-                        sub_index = self.calculate_sub_index_indian(pollutant, category, confidence)
-                    else:
-                        sub_index = self.calculate_sub_index_us(pollutant, category, confidence)
-                    sub_indices.append(sub_index)
-                except Exception as e:
-                    logger.error(f"Failed to calculate sub-index for {pollutant}: {e}")
+        Args:
+            predictions: Dict mapping pollutant -> (category, predicted_value)
+            standard: 'IN' or 'US'
+        """
+        if not predictions:
+            return {
+                'category': 'Unknown',
+                'aqi_mid': 0,
+                'dominant_pollutant': None,
+                'sub_indices': {}
+            }
         
-        if not sub_indices:
-            return {'error': 'No valid predictions'}
+        sub_indices = {}
+        max_aqi = 0
+        dominant_pollutant = None
         
-        # Overall AQI is the maximum (worst) sub-index
-        max_sub_index = max(sub_indices, key=lambda x: x['aqi_mid'])
+        for pollutant, (category, pred_value) in predictions.items():
+            if standard == 'IN':
+                sub_index = self.calculate_sub_index_indian(pollutant, category, pred_value)
+            else:
+                sub_index = self.calculate_sub_index_us(pollutant, category, pred_value)
+            
+            sub_indices[pollutant] = sub_index
+            
+            if sub_index['aqi_mid'] > max_aqi:
+                max_aqi = sub_index['aqi_mid']
+                dominant_pollutant = pollutant
         
-        result = {
-            'standard': standard,
-            'aqi_range': max_sub_index['aqi_range'],
-            'aqi_min': max_sub_index['aqi_min'],
-            'aqi_max': max_sub_index['aqi_max'],
-            'aqi_mid': max_sub_index['aqi_mid'],
-            'dominant_pollutant': max_sub_index['pollutant'],
-            'dominant_category': max_sub_index.get('us_category', max_sub_index['category']),
-            'category': max_sub_index.get('us_category', max_sub_index['category']),
-            'confidence': max_sub_index['confidence'],
-            'sub_indices': sub_indices,
-            'health_implications': self._get_health_implications(
-                max_sub_index.get('us_category', max_sub_index['category']), 
-                standard
-            )
+        # Overall category is determined by highest AQI
+        overall_category = sub_indices[dominant_pollutant]['category'] if dominant_pollutant else 'Unknown'
+        
+        return {
+            'category': overall_category,
+            'aqi_mid': max_aqi,
+            'dominant_pollutant': dominant_pollutant,
+            'sub_indices': sub_indices
         }
-        
-        return result
     
-    def _get_health_implications(self, category: str, standard: str) -> str:
+    def get_health_implications(self, category: str, standard: str = 'IN') -> str:
+        """Get health implications for a category"""
         normalized_category = category.replace(' ', '_')
         
         if standard == 'IN':
@@ -268,17 +430,18 @@ class AQICalculator:
 
 
 # ============================================================================
-# POLLUTANT PREDICTOR
+# POLLUTANT PREDICTOR - UPDATED FOR LSTM
 # ============================================================================
 
 class PollutantPredictor:
-    """Complete prediction pipeline for all pollutants"""
+    """Complete LSTM prediction pipeline for all pollutants"""
     
     def __init__(self, model_path: Path):
         self.model_manager = ModelManager(model_path)
         self.feature_engineer = FeatureEngineer()
         self.feature_aligner = FeatureAligner()
         self.aqi_calculator = AQICalculator()
+        self.sequence_builder = SequenceBuilder()
         
         self.pollutants = ['PM25', 'PM10', 'NO2', 'OZONE']
     
@@ -287,69 +450,75 @@ class PollutantPredictor:
                                 historical_data: pd.DataFrame,
                                 pollutant: str,
                                 horizon: str) -> Tuple[str, float]:
-        """Predict category for a single pollutant at specific horizon"""
-        try:
-            # 1. Load model
-            model_artifact = self.model_manager.load_model(pollutant, horizon)
+        """
+        Predict using LSTM regression model
+        
+        Args:
+            current_data: Current timestamp data (single row)
+            historical_data: Historical data sorted by timestamp
+            pollutant: Target pollutant
+            horizon: Prediction horizon (1h, 6h, 12h, 24h)
             
-            # 2. Engineer features
-            features = self.feature_engineer.engineer_features(
+        Returns:
+            (category: str, predicted_value: float)
+        """
+        try:
+            # 1. Load LSTM model and artifacts
+            model_artifact = self.model_manager.load_model(pollutant, horizon)
+            keras_model = model_artifact['model']
+            feature_scaler = model_artifact['feature_scaler']
+            target_scaler = model_artifact['target_scaler']
+            sequence_length = model_artifact['sequence_length']
+            feature_names = model_artifact['feature_names']
+            
+            # 2. Engineer features for current timestep
+            current_features = self.feature_engineer.engineer_features(
                 current_data=current_data,
                 historical_data=historical_data,
                 pollutant=pollutant,
                 horizon=horizon
             )
             
-            # 3. Align features to model's expected input
-            aligned_features = self.feature_aligner.align_features(
-                features=features,
-                model_features=model_artifact['feature_names']
+            # 3. Build sequence from current + historical
+            sequence, _ = self.sequence_builder.create_sequence(
+                current_features=current_features,
+                historical_data=historical_data,
+                feature_engineer=self.feature_engineer,
+                pollutant=pollutant,
+                horizon=horizon,
+                feature_names=feature_names,
+                sequence_length=sequence_length
             )
             
-            # 4. Make prediction using calibrated model
-            calibrated_model = model_artifact['calibrated_model']
+            # 4. Scale features
+            # Reshape to 2D for scaler: (sequence_length, n_features)
+            seq_2d = sequence[0]  # Remove batch dimension
+            seq_scaled_2d = feature_scaler.transform(seq_2d)
             
-            # Get probabilities
-            probabilities = calibrated_model.predict_proba(aligned_features)[0]
+            # Reshape back to 3D: (1, sequence_length, n_features)
+            seq_scaled_3d = np.expand_dims(seq_scaled_2d, axis=0)
             
-            # Apply health-aware thresholds
-            predicted_class_idx = self._apply_health_thresholds(
-                probabilities=probabilities,
-                thresholds=model_artifact['thresholds'],
-                classes=model_artifact['classes']
+            # 5. Predict concentration (regression)
+            pred_scaled = keras_model.predict(seq_scaled_3d, verbose=0)
+            
+            # 6. Inverse transform to get actual concentration
+            pred_concentration = target_scaler.inverse_transform(pred_scaled)[0][0]
+            pred_concentration = float(np.clip(pred_concentration, 0, 1000))
+            
+            # 7. Map concentration to AQI category using breakpoints
+            category = self.aqi_calculator.concentration_to_category(
+                pred_concentration, pollutant
             )
             
-            # Get category name
-            predicted_category = model_artifact['classes'][predicted_class_idx]
+            logger.info(
+                f"  ✓ {pollutant} {horizon}: {pred_concentration:.2f} µg/m³ → {category}"
+            )
             
-            # Confidence is the probability of predicted class
-            confidence = probabilities[predicted_class_idx]
-            
-            logger.info(f"  ✓ {pollutant} {horizon}: {predicted_category} ({confidence:.2%})")
-            
-            return predicted_category, confidence
+            return category, pred_concentration
             
         except Exception as e:
-            logger.error(f"Prediction failed for {pollutant} {horizon}: {e}")
+            logger.error(f"LSTM prediction failed for {pollutant} {horizon}: {e}")
             raise
-    
-    def _apply_health_thresholds(self,
-                                probabilities: np.ndarray,
-                                thresholds: Dict[str, float],
-                                classes: List[str]) -> int:
-        """Apply health-aware thresholds"""
-        candidate_classes = []
-        
-        for i, class_name in enumerate(classes):
-            if probabilities[i] >= thresholds[class_name]:
-                candidate_classes.append((i, probabilities[i]))
-        
-        if candidate_classes:
-            predicted_class_idx = max(candidate_classes, key=lambda x: x[1])[0]
-        else:
-            predicted_class_idx = np.argmax(probabilities)
-        
-        return predicted_class_idx
     
     def predict_all_horizons(self,
                            current_data: pd.DataFrame,
@@ -361,7 +530,8 @@ class PollutantPredictor:
         
         for horizon in ['1h', '6h', '12h', '24h']:
             try:
-                category, confidence = self.predict_single_pollutant(
+                # Get category and predicted concentration
+                category, pred_value = self.predict_single_pollutant(
                     current_data=current_data,
                     historical_data=historical_data,
                     pollutant=pollutant,
@@ -371,16 +541,17 @@ class PollutantPredictor:
                 # Calculate AQI details for this pollutant
                 if standard == 'IN':
                     sub_index = self.aqi_calculator.calculate_sub_index_indian(
-                        pollutant, category, confidence
+                        pollutant, category, pred_value
                     )
                 else:
                     sub_index = self.aqi_calculator.calculate_sub_index_us(
-                        pollutant, category, confidence
+                        pollutant, category, pred_value
                     )
                 
                 results[horizon] = {
                     'category': category,
-                    'confidence': confidence,
+                    'predicted_value': pred_value,  # NEW: actual concentration
+                    'confidence': None,              # No confidence in regression
                     'aqi_range': sub_index['aqi_range'],
                     'aqi_min': sub_index['aqi_min'],
                     'aqi_max': sub_index['aqi_max'],
@@ -392,7 +563,8 @@ class PollutantPredictor:
                 logger.error(f"Failed to predict {pollutant} {horizon}: {e}")
                 results[horizon] = {
                     'category': 'Unknown',
-                    'confidence': 0.0,
+                    'predicted_value': 0.0,
+                    'confidence': None,
                     'aqi_range': (0, 0),
                     'aqi_min': 0,
                     'aqi_max': 0,
@@ -428,7 +600,7 @@ class PollutantPredictor:
             predictions = {
                 pollutant: (
                     results[pollutant][horizon]['category'],
-                    results[pollutant][horizon]['confidence']
+                    results[pollutant][horizon].get('predicted_value')
                 )
                 for pollutant in self.pollutants
                 if 'error' not in results[pollutant][horizon]

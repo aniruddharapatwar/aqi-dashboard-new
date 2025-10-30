@@ -1,0 +1,35 @@
+================================================================================
+TEST SET METRICS (2025 Jan-Aug - PURE REGRESSION LSTM)
+================================================================================
+
+TRAINING APPROACH:
+  ✓ Year-based split (Train: 2021-2024, Test: 2025)
+  ✓ Model learns ALL seasonal patterns (4 full years)
+  ✓ Includes May-Aug from 2021-2024 (prevents distribution shift)
+  ✓ NO validation set (early stopping on training loss)
+  ✓ Pure MSE loss (no custom loss)
+  ✓ No class balancing
+  ✓ No oversampling
+  ✓ Longer sequences (48-240 timesteps)
+  ✓ Rolling mean/std features
+  ✓ Multi-lag features (24h, 48h, 72h, 168h)
+  ✓ Strong regularization (dropout 0.3, L2, batch norm)
+
+REGRESSION METRICS (PRIMARY)
+  MAE:  45.94 µg/m³
+  RMSE: 65.47 µg/m³
+  R²:   0.8216
+
+CLASSIFICATION METRICS (REFERENCE)
+  Accuracy: 0.4259
+
+PER-CLASS RECALL (REFERENCE)
+--------------------------------------------------------------------------------
+  Good            0.0000 (n=5732)
+  Satisfactory    0.5142 (n=4946)
+  Moderate        0.8199 (n=3848)
+  Poor            0.5822 (n=845)
+  Very_Poor       0.4151 (n=595)
+  Severe          0.7222 (n=1224)
+
+================================================================================
