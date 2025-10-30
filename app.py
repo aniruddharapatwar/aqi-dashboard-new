@@ -124,6 +124,8 @@ class DataManager:
                 raise ValueError("Data must have 'timestamp' or 'date' column")
             
             # Verify required columns for lat/lon matching
+            if 'lng' in df.columns and 'lon' not in df.columns:
+                df['lon'] = df['lng']
             if 'lat' not in df.columns or 'lon' not in df.columns:
                 raise ValueError(f"Data must have 'lat' and 'lon' columns. Found: {list(df.columns)}")
             
