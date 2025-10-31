@@ -1,9 +1,10 @@
 """
-Enhanced Gemini AI Assistant with Safety Validation
+Enhanced Gemini AI Assistant with Safety Validation and Structured Output
 Production-ready version with comprehensive error handling and response validation
 """
 
 import logging
+import json # <-- NEW: Import for JSON parsing
 from typing import Dict, List
 import re
 
@@ -22,8 +23,9 @@ class GeminiAssistant:
     Enhanced AI Assistant with:
     - User profile-aware responses
     - Safety validation
-    - Structured output formatting
+    - Structured JSON output formatting (NEW)
     - Comprehensive error handling
+    - Reduced token usage (NEW)
     """
     
     def __init__(self, api_key: str = None):
@@ -31,6 +33,22 @@ class GeminiAssistant:
         self.model = None
         self.model_name = None
         self.api_key = api_key
+        
+        # Define the strict JSON schema for structured output (NEW)
+        self.json_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "title": {"type": "STRING", "description": "A brief, 5-7 word title summarizing the advice."},
+                "situation_and_risk": {"type": "STRING", "description": "Brief assessment of air quality impact and specific health risks for the user's profile."},
+                "risk_level_summary": {"type": "STRING", "description": "Summary of the user's calculated risk level and key symptoms to watch for."},
+                "recommended_actions": {
+                    "type": "ARRAY",
+                    "description": "3 to 4 specific, prioritized, and actionable recommendations. Each item should be a complete sentence.",
+                    "items": {"type": "STRING"}
+                }
+            },
+            "required": ["title", "situation_and_risk", "risk_level_summary", "recommended_actions"]
+        }
         
         if not GEMINI_AVAILABLE:
             logger.warning("Gemini not available - google.generativeai not installed")
@@ -66,7 +84,7 @@ class GeminiAssistant:
                             'temperature': 0.7,
                             'top_p': 0.8,
                             'top_k': 40,
-                            'max_output_tokens': 800,
+                            'max_output_tokens': 300, # <-- MODIFIED: Reduced from 800 to 300 for cost management
                         },
                         safety_settings=[
                             {
@@ -119,7 +137,7 @@ class GeminiAssistant:
                 - weather: Weather data
         
         Returns:
-            Dictionary with response, validation, and metadata
+            Dictionary with response (formatted markdown string), validation, and metadata
         """
         user_profile = context.get('user_profile', {})
         location = context.get('location', 'Unknown')
@@ -165,22 +183,44 @@ class GeminiAssistant:
                 health_category=health_category
             )
             
-            logger.info(f"Sending request to {self.model_name}...")
-            response = self.model.generate_content(prompt)
+            logger.info(f"Sending structured request to {self.model_name}...")
+            
+            # <-- MODIFIED: Add response config for structured output
+            response = self.model.generate_content(
+                prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_schema": self.json_schema
+                }
+            )
             
             if response and response.text:
-                logger.info(f"✓ Received response from {self.model_name}")
+                logger.info(f"✓ Received JSON response from {self.model_name}")
                 
-                # Validate response for safety and accuracy
+                # 1. Parse JSON output
+                try:
+                    json_response = json.loads(response.text)
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to parse AI response as JSON: {response.text[:100]}...")
+                    # Fallback on JSON failure
+                    return {
+                        'response': self._static_response(context, user_profile),
+                        'source': 'static_fallback_json_error',
+                        'model': self.model_name,
+                        'validation': {'valid': False, 'warnings': ['AI output was not valid JSON']}
+                    }
+
+                # 2. Validate response content for safety and accuracy
+                # Use the string representation of the JSON for validation checks
                 validation_result = self._validate_response(
-                    response.text, 
+                    str(json_response), 
                     aqi_mid, 
                     category, 
                     user_profile
                 )
                 
-                # Clean up response
-                cleaned_response = self._clean_response(response.text)
+                # 3. Format JSON back into readable Markdown string
+                cleaned_response = self._format_json_response(json_response)
                 
                 return {
                     'response': cleaned_response,
@@ -214,12 +254,10 @@ class GeminiAssistant:
         
         # Risk level based on profile
         risk_level = "STANDARD"
-        if health_category in ['asthma', 'copd', 'respiratory', 'heart_condition']:
+        if health_category in ['asthma', 'copd', 'respiratory', 'heart_condition', 'pregnant']:
             risk_level = "HIGH RISK"
         elif age_category in ['child', 'elderly']:
             risk_level = "ELEVATED RISK"
-        elif health_category == 'pregnant':
-            risk_level = "HIGH RISK"
         
         # Weather impact
         weather_impact = ""
@@ -231,7 +269,8 @@ class GeminiAssistant:
             elif wind_speed > 20:
                 weather_impact += "High winds may resuspend particulate matter. "
         
-        prompt = f"""You are Dr. AQI, an expert air quality health advisor for Delhi NCR, India. You provide evidence-based, personalized health recommendations.
+        # <-- MODIFIED: Changed persona and updated guidelines for JSON output
+        prompt = f"""You are the **AQI Assistant**, an expert air quality health advisor for Delhi NCR, India. You provide evidence-based, personalized health recommendations.
 
 CURRENT AIR QUALITY SITUATION:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -254,24 +293,12 @@ USER QUESTION:
 
 RESPONSE GUIDELINES:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. Address the user's specific question directly
-2. Tailor advice to their risk level and health profile
-3. Be specific and actionable - give concrete steps
-4. Use clear, non-technical language
-5. Format response with these sections:
-
-**Current Situation & Risk**
-- Brief assessment of air quality impact for THIS user
-- Specific health risks for their profile
-
-**Your Risk Level**
-- Why their risk level is {risk_level}
-- What symptoms to watch for
-
-**Recommended Actions**
-- 3-4 specific, actionable recommendations
-- Prioritize most important actions first
-- Include both short-term and preventive measures
+1. You MUST output a JSON object strictly following the provided schema. DO NOT include any text, headers, or markdown outside the JSON object.
+2. Address the user's specific question directly within the structured fields.
+3. Tailor advice to their risk level and health profile.
+4. Be specific, actionable, and use clear, non-technical language.
+5. The 'recommended_actions' array must contain 3-4 specific, prioritized, actionable steps.
+6. The entire response must be concise (max 300 output tokens).
 
 CRITICAL SAFETY RULES:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -280,17 +307,45 @@ CRITICAL SAFETY RULES:
 ✓ For AQI > 200: Stress URGENT need to avoid outdoor activities
 ✓ Never downplay serious health risks
 ✓ Be factual - don't speculate or give unproven advice
-✓ Keep response under 250 words
-✓ Use markdown formatting (**bold** for emphasis, bullet points for lists)
 
-Provide your response now:"""
+Provide your response now as a valid JSON object:"""
         
         return prompt
+    
+    def _format_json_response(self, json_data: Dict) -> str:
+        """
+        NEW METHOD: Formats the structured JSON response back into a readable markdown string
+        for consistent display on the dashboard.
+        """
+        if not json_data:
+            return "Could not retrieve structured advice."
+
+        # Use the 'title' field as the main header
+        markdown_output = f"**{json_data.get('title', 'Air Quality Advice')}**\n\n"
+
+        # Situation and Risk
+        markdown_output += "**Current Situation & Risk**\n"
+        markdown_output += json_data.get('situation_and_risk', 'N/A') + "\n\n"
+
+        # Risk Level Summary
+        markdown_output += "**Your Risk Level**\n"
+        markdown_output += json_data.get('risk_level_summary', 'N/A') + "\n\n"
+
+        # Recommended Actions (as a bulleted list)
+        markdown_output += "**Recommended Actions**\n"
+        actions = json_data.get('recommended_actions', [])
+        if actions and isinstance(actions, list):
+            markdown_output += "\n".join([f"• {action}" for action in actions])
+        else:
+            markdown_output += "• No specific actions recommended."
+            
+        return markdown_output
     
     def _validate_response(self, response_text: str, aqi: float, 
                           category: str, user_profile: Dict) -> Dict:
         """
         Comprehensive response validation for safety and accuracy
+        (Now validates content within the JSON string)
         
         Returns:
             Dict with 'valid' (bool) and 'warnings' (list of str)
@@ -340,13 +395,11 @@ Provide your response now:"""
         
         # Check for appropriate urgency at severe AQI
         if aqi > 300:
-            urgency_indicators = ['urgent', 'emergency', 'critical', 'immediately', 'serious']
+            urgency_indicators = ['urgent', 'emergency', 'critical', 'immediately', 'serious', 'stay indoors']
             if not any(word in response_text.lower() for word in urgency_indicators):
                 warnings.append(f"Response should convey urgency at AQI {aqi:.0f}")
         
-        # Check that response uses proper formatting
-        if '**' not in response_text:
-            warnings.append("Response lacks formatting (should use **bold**)")
+        # <-- MODIFIED: Removed markdown check
         
         return {
             'valid': len(warnings) == 0,
@@ -355,7 +408,10 @@ Provide your response now:"""
         }
     
     def _clean_response(self, response_text: str) -> str:
-        """Clean and format response text"""
+        """
+        DEPRECATED: This method is largely replaced by _format_json_response,
+        but kept for static/fallback responses and robust code structure.
+        """
         # Remove any disclaimers
         response_text = re.sub(r'(?i)(disclaimer|note):\s*.{0,200}', '', response_text)
         
