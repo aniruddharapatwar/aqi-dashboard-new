@@ -342,14 +342,14 @@ async def root():
         "version": "2.2.0",
         "description": "AQI Dashboard API (Updated LSTM Models)",
         "endpoints": {
-            "/regions": "Get all regions",
-            "/locations": "Get locations by region",
-            "/predict": "Get AQI predictions",
-            "/chat": "AI chat assistance"
+            "/api/regions": "Get all regions",
+            "/api/locations": "Get locations by region",
+            "/api/predict": "Get AQI predictions",
+            "/api/chat": "AI chat assistance"
         }
     }
 
-@app.get("/regions")
+@app.get("/api/regions")
 async def get_regions():
     """Get all available regions"""
     try:
@@ -359,7 +359,7 @@ async def get_regions():
         logger.error(f"Error getting regions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/locations")
+@app.get("/api/locations")
 async def get_locations(region: str):
     """Get locations for a specific region"""
     try:
@@ -369,7 +369,7 @@ async def get_locations(region: str):
         logger.error(f"Error getting locations for {region}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/predict")
+@app.post("/api/predict")
 async def predict(request: PredictionRequest):
     """
     Get AQI predictions for a location
@@ -425,7 +425,7 @@ async def predict(request: PredictionRequest):
         logger.error(f"Prediction error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
-@app.post("/chat")
+@app.post("/api/chat")
 async def chat(request: ChatRequest):
     """
     AI chat endpoint for health advisory and AQI questions
@@ -473,7 +473,7 @@ async def chat(request: ChatRequest):
             "source": "error"
         }
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check():
     """Detailed health check"""
     try:
