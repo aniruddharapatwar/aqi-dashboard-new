@@ -1,10 +1,6 @@
 """
-AQI Dashboard - FastAPI Backend (FIXED VERSION)
-Complete REST API for air quality predictions and AI assistance
-FIXES: 
-- Resolved zero values in forecasting
-- Fixed Gemini API initialization and error handling
-- Better model loading and validation
+AQI Dashboard - FastAPI Backend (LSTM MODEL VERSION)
+Complete REST API for air quality predictions using LSTM models
 """
 
 from fastapi import FastAPI, HTTPException, Request
@@ -13,16 +9,17 @@ from pydantic import BaseModel
 from typing import Dict, List, Optional
 import pandas as pd
 import numpy as np
-import pickle
 from pathlib import Path
 import logging
-import json
 import os
-import re
 
-# 🔧 Load environment variables from .env file
+# Load environment variables
 from dotenv import load_dotenv
 load_dotenv()
+
+# Import LSTM Predictor
+from predictor import LSTMPredictor, ModelManager, AQICalculator, HealthAdvisory
+from feature_engineer import FeatureEngineer
 
 # Import Gemini AI
 try:
@@ -76,8 +73,8 @@ class ChatRequest(BaseModel):
 
 app = FastAPI(
     title="AQI Dashboard API",
-    description="Air Quality Index Prediction and Advisory System",
-    version="2.0.1-fixed"
+    description="Air Quality Index Prediction using LSTM Models",
+    version="3.0.0-lstm"
 )
 
 # CORS middleware
@@ -97,7 +94,6 @@ class DataManager:
     def __init__(self):
         self.data = self.load_data()
         self.whitelist = self.load_whitelist()
-        self.models = {}
     
     def load_data(self):
         """Load data with mixed date format support"""
@@ -229,335 +225,27 @@ class DataManager:
         
         loc_data = loc_data.sort_values('timestamp')
         
-        return loc_data.iloc[[-1]].copy(), loc_data.tail(96).copy()
-    
-    def load_model(self, pollutant: str, horizon: str):
-        """Load ML model for specific pollutant and horizon with validation"""
-        cache_key = f"{pollutant}_{horizon}"
-        if cache_key in self.models:
-            return self.models[cache_key]
-        
-        model_file = Config.MODEL_PATH / f"model_artifacts_{pollutant}_{horizon}.pkl"
-        if not model_file.exists():
-            logger.error(f"Model file not found: {model_file}")
-            raise FileNotFoundError(f"Model not found: {model_file}")
-        
-        try:
-            with open(model_file, 'rb') as f:
-                model_artifact = pickle.load(f)
-            
-            # Validate model artifact structure
-            required_keys = ['calibrated_model', 'classes', 'feature_names']
-            missing_keys = [k for k in required_keys if k not in model_artifact]
-            if missing_keys:
-                raise ValueError(f"Model artifact missing keys: {missing_keys}")
-            
-            logger.info(f"✓ Loaded model {pollutant}_{horizon} with {len(model_artifact['feature_names'])} features")
-            self.models[cache_key] = model_artifact
-            return model_artifact
-            
-        except Exception as e:
-            logger.error(f"Error loading model {cache_key}: {e}", exc_info=True)
-            raise
+        return loc_data.iloc[[-1]].copy(), loc_data.tail(200).copy()
 
 # Initialize data manager
 data_manager = DataManager()
 
 # ============================================================================
-# FEATURE ENGINEERING
+# LSTM PREDICTOR INITIALIZATION
 # ============================================================================
 
-class SimpleFeatureEngineer:
-    WEATHER_FEATURES = [
-        'temperature', 'humidity', 'dewPoint', 'apparentTemperature',
-        'precipIntensity', 'pressure', 'surfacePressure',
-        'cloudCover', 'windSpeed', 'windBearing', 'windGust'
-    ]
-    
-    def engineer_features(self, current_data: pd.DataFrame, historical_data: pd.DataFrame,
-                         pollutant: str, horizon: str) -> pd.DataFrame:
-        """Engineer features with proper error handling"""
-        try:
-            features = current_data.copy()
-            
-            # Add lag features
-            lag_map = {'1h': [1, 2, 3], '6h': [6, 12], '12h': [12, 24], '24h': [24, 48]}
-            for lag in lag_map.get(horizon, [1]):
-                if len(historical_data) >= lag and pollutant in historical_data.columns:
-                    lag_value = historical_data[pollutant].iloc[-lag]
-                    if pd.notna(lag_value):
-                        features.loc[features.index[0], f'{pollutant}_lag_{lag}h'] = lag_value
-                    else:
-                        features.loc[features.index[0], f'{pollutant}_lag_{lag}h'] = 0.0
-            
-            # Select numeric features only
-            exclude = {'location', 'timestamp', 'date', 'lat', 'lng', 'lon', 'region',
-                      'PM25', 'PM10', 'NO2', 'OZONE', 'CO', 'SO2', 'AQI', 'pincode', 'loc_key', 'loc_id'}
-            numeric_cols = [c for c in features.columns 
-                           if c not in exclude and pd.api.types.is_numeric_dtype(features[c])]
-            
-            result = features[numeric_cols].fillna(0).astype(np.float32)
-            logger.info(f"Engineered {len(result.columns)} features for {pollutant}_{horizon}")
-            return result
-            
-        except Exception as e:
-            logger.error(f"Feature engineering error for {pollutant}_{horizon}: {e}", exc_info=True)
-            # Return minimal features as fallback
-            return pd.DataFrame([[0.0]], columns=['dummy_feature']).astype(np.float32)
-    
-    def align_features(self, features: pd.DataFrame, model_features: List[str]) -> pd.DataFrame:
-        """Align features with proper logging"""
-        try:
-            aligned = features.reindex(columns=model_features, fill_value=0.0).astype(np.float32)
-            logger.info(f"Aligned {len(model_features)} features")
-            return aligned
-        except Exception as e:
-            logger.error(f"Feature alignment error: {e}", exc_info=True)
-            raise
-
-feature_engineer = SimpleFeatureEngineer()
+logger.info("Initializing LSTM Predictor...")
+model_manager = ModelManager(Config.MODEL_PATH)
+feature_engineer = FeatureEngineer()
+lstm_predictor = LSTMPredictor(
+    model_manager=model_manager,
+    feature_engineer=feature_engineer,
+    spatial_data=None
+)
+logger.info("✓ LSTM Predictor initialized")
 
 # ============================================================================
-# AQI CALCULATION
-# ============================================================================
-
-INDIAN_AQI_BREAKPOINTS = {
-    'PM25': {
-        'Good': (0, 30), 'Satisfactory': (31, 60), 'Moderate': (61, 90),
-        'Poor': (91, 120), 'Very_Poor': (121, 250), 'Severe': (251, 500)
-    },
-    'PM10': {
-        'Good': (0, 50), 'Satisfactory': (51, 100), 'Moderate': (101, 250),
-        'Poor': (251, 350), 'Very_Poor': (351, 430), 'Severe': (431, 600)
-    },
-    'NO2': {
-        'Good': (0, 40), 'Satisfactory': (41, 80), 'Moderate': (81, 180),
-        'Poor': (181, 280), 'Very_Poor': (281, 400), 'Severe': (401, 500)
-    },
-    'OZONE': {
-        'Good': (0, 50), 'Satisfactory': (51, 100), 'Moderate': (101, 168),
-        'Poor': (169, 208), 'Very_Poor': (209, 748), 'Severe': (749, 1000)
-    }
-}
-
-INDIAN_AQI_INDEX = {
-    'Good': (0, 50), 'Satisfactory': (51, 100), 'Moderate': (101, 200),
-    'Poor': (201, 300), 'Very_Poor': (301, 400), 'Severe': (401, 500)
-}
-
-US_AQI_INDEX = {
-    'Good': (0, 50), 'Moderate': (51, 100), 'Unhealthy_for_Sensitive': (101, 150),
-    'Unhealthy': (151, 200), 'Very_Unhealthy': (201, 300), 'Hazardous': (301, 500)
-}
-
-CATEGORY_MAPPING = {
-    'Good': {'us': 'Good'}, 'Satisfactory': {'us': 'Moderate'},
-    'Moderate': {'us': 'Unhealthy_for_Sensitive'}, 'Poor': {'us': 'Unhealthy'},
-    'Very_Poor': {'us': 'Very_Unhealthy'}, 'Severe': {'us': 'Hazardous'}
-}
-
-class AQICalculator:
-    def calculate_sub_index(self, pollutant: str, category: str, confidence: float, standard: str):
-        normalized = category.replace(' ', '_')
-        if standard == 'IN':
-            aqi_min, aqi_max = INDIAN_AQI_INDEX.get(normalized, (0, 500))
-        else:
-            us_cat = CATEGORY_MAPPING.get(normalized, {}).get('us', 'Hazardous')
-            aqi_min, aqi_max = US_AQI_INDEX.get(us_cat, (0, 500))
-        
-        conc_min, conc_max = INDIAN_AQI_BREAKPOINTS.get(pollutant, {}).get(normalized, (0, 500))
-        
-        aqi_mid = (aqi_min + aqi_max) / 2
-        
-        logger.info(f"{pollutant} {category}: AQI={aqi_mid:.1f} (range: {aqi_min}-{aqi_max})")
-        
-        return {
-            'pollutant': pollutant, 'category': category,
-            'aqi_min': aqi_min, 'aqi_max': aqi_max,
-            'aqi_mid': aqi_mid,
-            'concentration_range': (conc_min, conc_max),
-            'confidence': confidence
-        }
-    
-    def calculate_overall(self, predictions: Dict, standard: str):
-        sub_indices = []
-        for pollutant, (category, confidence) in predictions.items():
-            if pollutant in ['PM25', 'PM10', 'NO2', 'OZONE']:
-                sub_idx = self.calculate_sub_index(pollutant, category, confidence, standard)
-                sub_indices.append(sub_idx)
-        
-        if not sub_indices:
-            return {'error': 'No valid predictions', 'aqi_mid': 0}
-        
-        max_idx = max(sub_indices, key=lambda x: x['aqi_mid'])
-        return {
-            'aqi_min': max_idx['aqi_min'], 'aqi_max': max_idx['aqi_max'],
-            'aqi_mid': max_idx['aqi_mid'], 'category': max_idx['category'],
-            'dominant_pollutant': max_idx['pollutant'], 'confidence': max_idx['confidence']
-        }
-
-aqi_calculator = AQICalculator()
-
-# ============================================================================
-# PREDICTION ENGINE
-# ============================================================================
-
-def predict_single(current_data: pd.DataFrame, historical_data: pd.DataFrame,
-                  pollutant: str, horizon: str):
-    """Make a single prediction with comprehensive error handling"""
-    try:
-        # Load model
-        model = data_manager.load_model(pollutant, horizon)
-        
-        # Engineer features
-        features = feature_engineer.engineer_features(current_data, historical_data, pollutant, horizon)
-        
-        # Align features
-        aligned = feature_engineer.align_features(features, model['feature_names'])
-        
-        # Make prediction
-        probs = model['calibrated_model'].predict_proba(aligned)[0]
-        pred_idx = np.argmax(probs)
-        predicted_category = model['classes'][pred_idx]
-        confidence = float(probs[pred_idx])
-        
-        logger.info(f"✓ Predicted {pollutant} {horizon}: {predicted_category} (confidence: {confidence:.2%})")
-        
-        return predicted_category, confidence
-        
-    except Exception as e:
-        logger.error(f"Prediction failed for {pollutant} {horizon}: {e}", exc_info=True)
-        # Return a safe default instead of raising
-        return 'Moderate', 0.5
-
-def extract_weather_data(current_data: pd.DataFrame) -> Dict:
-    """Extract weather parameters from current data row"""
-    weather_features = [
-        'temperature', 'humidity', 'dewPoint', 'apparentTemperature',
-        'precipIntensity', 'pressure', 'surfacePressure',
-        'cloudCover', 'windSpeed', 'windBearing', 'windGust'
-    ]
-    
-    weather = {}
-    if len(current_data) > 0:
-        row = current_data.iloc[0]
-        for feature in weather_features:
-            if feature in row.index and pd.notna(row[feature]):
-                value = float(row[feature])
-                original_value = value
-                
-                # Convert Fahrenheit to Celsius for temperature fields
-                if feature in ['temperature', 'dewPoint', 'apparentTemperature'] and value > 50:
-                    value = (value - 32) * 5 / 9
-                    logger.info(f"Converted {feature}: {original_value:.1f}°F → {value:.1f}°C")
-                
-                weather[feature] = value
-            else:
-                weather[feature] = 0.0
-    
-    logger.info(f"Weather extracted: temperature={weather.get('temperature', 0):.1f}°C, humidity={weather.get('humidity', 0):.1f}%, windSpeed={weather.get('windSpeed', 0):.1f} km/h")
-    return weather
-
-def predict_all(current_data: pd.DataFrame, historical_data: pd.DataFrame, standard: str = 'IN'):
-    """Main prediction function with improved error handling"""
-    results = {}
-    
-    logger.info(f"Current data shape: {current_data.shape}, Historical: {historical_data.shape}")
-    
-    # Extract weather data
-    weather_data = extract_weather_data(current_data)
-    results['weather'] = weather_data
-    
-    # Add historical AQI data
-    historical_aqi = []
-    if len(historical_data) > 0 and 'timestamp' in historical_data.columns:
-        historical_subset = historical_data.tail(48).copy()
-        
-        for _, row in historical_subset.iterrows():
-            aqi_value = 0
-            timestamp = row.get('timestamp', '')
-            
-            if 'AQI' in row.index and pd.notna(row['AQI']):
-                aqi_value = float(row['AQI'])
-            else:
-                # Calculate from PM2.5 if available
-                if 'PM25' in row.index and pd.notna(row['PM25']):
-                    pm25 = float(row['PM25'])
-                    if pm25 <= 30:
-                        aqi_value = pm25 * 50 / 30
-                    elif pm25 <= 60:
-                        aqi_value = 50 + (pm25 - 30) * 50 / 30
-                    elif pm25 <= 90:
-                        aqi_value = 100 + (pm25 - 60) * 100 / 30
-                    elif pm25 <= 120:
-                        aqi_value = 200 + (pm25 - 90) * 100 / 30
-                    elif pm25 <= 250:
-                        aqi_value = 300 + (pm25 - 120) * 100 / 130
-                    else:
-                        aqi_value = 400 + (pm25 - 250) * 100 / 130
-            
-            if aqi_value > 0:
-                historical_aqi.append({
-                    'timestamp': str(timestamp),
-                    'aqi': round(aqi_value, 1)
-                })
-        
-        logger.info(f"✓ Prepared {len(historical_aqi)} historical AQI data points")
-    
-    results['historical'] = historical_aqi
-    
-    # Predict for each pollutant
-    for pollutant in ['PM25', 'PM10', 'NO2', 'OZONE']:
-        results[pollutant] = {}
-        
-        if pollutant not in historical_data.columns:
-            logger.warning(f"{pollutant} not in data columns")
-            for horizon in ['1h', '6h', '12h', '24h']:
-                results[pollutant][horizon] = {
-                    'category': 'Unknown', 'confidence': 0.0,
-                    'aqi_min': 0, 'aqi_max': 0, 'aqi_mid': 0,
-                    'concentration_range': (0, 0), 'error': f'{pollutant} data not available'
-                }
-            continue
-        
-        for horizon in ['1h', '6h', '12h', '24h']:
-            try:
-                category, confidence = predict_single(current_data, historical_data, pollutant, horizon)
-                sub_idx = aqi_calculator.calculate_sub_index(pollutant, category, confidence, standard)
-                results[pollutant][horizon] = {
-                    'category': category, 'confidence': confidence,
-                    'aqi_min': sub_idx['aqi_min'], 'aqi_max': sub_idx['aqi_max'],
-                    'aqi_mid': sub_idx['aqi_mid'],
-                    'concentration_range': sub_idx['concentration_range']
-                }
-                logger.info(f"✓ {pollutant} {horizon}: AQI={sub_idx['aqi_mid']:.1f} {category} ({confidence:.2%})")
-            except Exception as e:
-                logger.error(f"Failed {pollutant} {horizon}: {e}", exc_info=True)
-                # Use fallback values
-                results[pollutant][horizon] = {
-                    'category': 'Moderate', 'confidence': 0.5,
-                    'aqi_min': 101, 'aqi_max': 200, 'aqi_mid': 150,
-                    'concentration_range': (61, 90), 'error': str(e)
-                }
-    
-    # Calculate overall AQI
-    results['overall'] = {}
-    for horizon in ['1h', '6h', '12h', '24h']:
-        preds = {p: (results[p][horizon]['category'], results[p][horizon]['confidence'])
-                for p in ['PM25', 'PM10', 'NO2', 'OZONE'] if 'error' not in results[p][horizon]}
-        
-        if preds:
-            results['overall'][horizon] = aqi_calculator.calculate_overall(preds, standard)
-        else:
-            results['overall'][horizon] = {
-                'aqi_min': 101, 'aqi_max': 200, 'aqi_mid': 150,
-                'category': 'Moderate', 'dominant_pollutant': 'PM25', 'confidence': 0.5
-            }
-    
-    return results
-
-# ============================================================================
-# GEMINI AI ASSISTANT (FIXED VERSION)
+# GEMINI AI ASSISTANT
 # ============================================================================
 
 class GeminiAssistant:
@@ -575,10 +263,8 @@ class GeminiAssistant:
             return
         
         try:
-            # Configure Gemini with proper error handling
             genai.configure(api_key=Config.GEMINI_API_KEY)
             
-            # Try gemini-1.5-flash first (newer, more stable)
             model_options = [
                 'gemini-1.5-flash',
                 'gemini-1.5-pro',
@@ -590,7 +276,6 @@ class GeminiAssistant:
                     logger.info(f"Attempting to initialize {model_name}...")
                     self.model = genai.GenerativeModel(model_name)
                     
-                    # Test the model with a simple prompt
                     test_response = self.model.generate_content("Say 'OK' if you're working")
                     if test_response and test_response.text:
                         self.model_name = model_name
@@ -609,7 +294,7 @@ class GeminiAssistant:
             self.enabled = False
     
     def get_response(self, message: str, context: Dict) -> Dict:
-        """Get AI response with fallback to static responses"""
+        """Get AI response with enhanced validation"""
         user_profile = context.get('user_profile', {})
         location = context.get('location', 'Unknown')
         aqi_data = context.get('aqi_data', {})
@@ -620,11 +305,11 @@ class GeminiAssistant:
             return {
                 'response': self._static_response(context, user_profile),
                 'source': 'static',
-                'model': 'none'
+                'model': 'none',
+                'validation': {'valid': True, 'warnings': []}
             }
         
         try:
-            # Build context for Gemini
             aqi_mid = aqi_data.get('aqi_mid', 0)
             category = aqi_data.get('category', 'Unknown')
             dominant = aqi_data.get('dominant_pollutant', 'Unknown')
@@ -632,7 +317,8 @@ class GeminiAssistant:
             temp = weather_data.get('temperature', 0)
             humidity = weather_data.get('humidity', 0)
             
-            # Simplified prompt that's less likely to fail
+            profile_label = user_profile.get('profile_label', 'general public')
+            
             prompt = f"""You are an air quality health advisor for Delhi NCR, India.
 
 Current Situation:
@@ -641,32 +327,52 @@ Current Situation:
 - Dominant Pollutant: {dominant}
 - Temperature: {temp:.1f}°C
 - Humidity: {humidity:.1f}%
+- User Profile: {profile_label}
 
 User Question: {message}
 
-Provide a helpful, concise response with:
-1. Brief assessment of the air quality
-2. Health risk level
-3. 2-3 specific recommended actions
+Provide a helpful, accurate response with:
+1. Brief assessment of the air quality impact for this user profile
+2. Health risk level (specific to their profile)
+3. 3-4 specific recommended actions
 
-Keep it under 200 words."""
+CRITICAL RULES:
+- Be factual and evidence-based
+- Tailor advice to the user's profile ({profile_label})
+- If user has health conditions, emphasize extra precautions
+- Recommend N95 masks for AQI > 150
+- Keep response under 250 words
+- Use clear, actionable language
+
+Format with sections: **Current Situation**, **Your Risk Level**, **Recommended Actions**"""
             
             logger.info(f"Sending request to {self.model_name}...")
             response = self.model.generate_content(prompt)
             
             if response and response.text:
                 logger.info(f"✓ Received response from {self.model_name}")
+                
+                # Validate response
+                validation_result = self._validate_response(
+                    response.text, 
+                    aqi_mid, 
+                    category, 
+                    user_profile
+                )
+                
                 return {
                     'response': response.text,
                     'source': 'gemini',
-                    'model': self.model_name
+                    'model': self.model_name,
+                    'validation': validation_result
                 }
             else:
                 logger.warning("Empty response from Gemini, using fallback")
                 return {
                     'response': self._static_response(context, user_profile),
                     'source': 'static_fallback',
-                    'model': self.model_name
+                    'model': self.model_name,
+                    'validation': {'valid': True, 'warnings': []}
                 }
                 
         except Exception as e:
@@ -674,24 +380,65 @@ Keep it under 200 words."""
             return {
                 'response': self._static_response(context, user_profile),
                 'source': 'static_error',
-                'error': str(e)
+                'error': str(e),
+                'validation': {'valid': False, 'warnings': ['AI service error']}
             }
+    
+    def _validate_response(self, response_text: str, aqi: float, category: str, user_profile: Dict) -> Dict:
+        """Validate AI response for safety and accuracy"""
+        warnings = []
+        
+        # Check for dangerous advice patterns
+        dangerous_patterns = [
+            'safe to go outside',
+            'no need for mask',
+            'air quality is fine'
+        ]
+        
+        if aqi > 150:
+            response_lower = response_text.lower()
+            for pattern in dangerous_patterns:
+                if pattern in response_lower:
+                    warnings.append(f"Response may downplay risks (AQI {aqi:.0f})")
+                    break
+        
+        # Check if response addresses user profile
+        profile_label = user_profile.get('profile_label', '')
+        health_category = user_profile.get('health_category', '')
+        
+        if health_category and health_category not in response_text.lower():
+            warnings.append("Response may not fully address user's health condition")
+        
+        # Check for mask recommendation at high AQI
+        if aqi > 150 and 'mask' not in response_text.lower():
+            warnings.append("Response should recommend masks for this AQI level")
+        
+        # Check response length
+        if len(response_text) > 2000:
+            warnings.append("Response is very long, may be hard to read")
+        
+        return {
+            'valid': len(warnings) == 0,
+            'warnings': warnings
+        }
     
     def _static_response(self, context, user_profile=None):
         """Static fallback response"""
         category = context.get('aqi_data', {}).get('category', 'Unknown')
         aqi_mid = context.get('aqi_data', {}).get('aqi_mid', 0)
         
+        profile_label = user_profile.get('profile_label', 'general public') if user_profile else 'general public'
+        
         responses = {
-            'Good': f"✓ Air quality is excellent with AQI {aqi_mid:.0f}! Perfect for outdoor activities.",
-            'Satisfactory': f"Air quality is acceptable (AQI {aqi_mid:.0f}). Generally safe for most people.",
-            'Moderate': f"⚠ Air quality is moderate (AQI {aqi_mid:.0f}). Sensitive groups should be cautious.",
-            'Poor': f"🚨 Poor air quality (AQI {aqi_mid:.0f}). Limit outdoor exposure.",
-            'Very_Poor': f"🛑 Very poor air quality (AQI {aqi_mid:.0f})! Stay indoors.",
-            'Severe': f"🔴 SEVERE air quality (AQI {aqi_mid:.0f})! Do not go outside."
+            'Good': f"✓ Air quality is excellent with AQI {aqi_mid:.0f}! Safe for all outdoor activities, including for {profile_label}.",
+            'Satisfactory': f"Air quality is acceptable (AQI {aqi_mid:.0f}). Generally safe for {profile_label}, but sensitive individuals should be cautious during prolonged outdoor activities.",
+            'Moderate': f"⚠ Air quality is moderate (AQI {aqi_mid:.0f}). {profile_label.capitalize()} should limit prolonged outdoor exertion. Consider wearing masks during extended outdoor activities.",
+            'Poor': f"🚨 Poor air quality (AQI {aqi_mid:.0f}). {profile_label.capitalize()} should limit outdoor exposure. Wear N95 masks if going outside. Keep windows closed.",
+            'Very_Poor': f"🛑 Very poor air quality (AQI {aqi_mid:.0f})! {profile_label.capitalize()} should stay indoors. Use air purifiers. Avoid all outdoor activities. N95 masks essential if must go out.",
+            'Severe': f"🔴 SEVERE air quality (AQI {aqi_mid:.0f})! URGENT: {profile_label.capitalize()} must stay indoors. Close all windows. Use air purifiers. Avoid all outdoor activities. Emergency health risk."
         }
         
-        return responses.get(category, f"Air quality status: {category} (AQI {aqi_mid:.0f})")
+        return responses.get(category, f"Air quality status: {category} (AQI {aqi_mid:.0f}). Please consult local health advisories for {profile_label}.")
 
 gemini_assistant = GeminiAssistant()
 
@@ -702,15 +449,10 @@ gemini_assistant = GeminiAssistant()
 @app.get("/")
 async def root():
     return {
-        "message": "AQI Dashboard API - Fixed Version",
-        "version": "2.0.1-fixed",
+        "message": "AQI Dashboard API - LSTM Model Version",
+        "version": "3.0.0-lstm",
         "status": "running",
-        "fixes": [
-            "Resolved zero forecasting values",
-            "Fixed Gemini API initialization",
-            "Improved error handling",
-            "Better model loading validation"
-        ]
+        "model_type": "LSTM Deep Learning Models"
     }
 
 @app.get("/api/regions")
@@ -731,18 +473,118 @@ async def get_locations(region: str):
 
 @app.post("/api/predict")
 async def predict(request: PredictionRequest):
-    """Get AQI predictions for a location"""
+    """Get AQI predictions for a location using LSTM models"""
     try:
         logger.info(f"=== Prediction request for: {request.location} ===")
         current, historical = data_manager.get_location_data(request.location)
-        predictions = predict_all(current, historical, request.standard)
+        
+        # Use LSTM predictor
+        predictions_dict = lstm_predictor.predict_location(
+            current_data=current,
+            historical_data=historical,
+            location=request.location,
+            standard=request.standard
+        )
+        
+        # Extract weather data
+        weather_data = {}
+        if len(current) > 0:
+            row = current.iloc[0]
+            weather_features = ['temperature', 'humidity', 'dewPoint', 'apparentTemperature',
+                              'precipIntensity', 'pressure', 'surfacePressure',
+                              'cloudCover', 'windSpeed', 'windBearing', 'windGust']
+            
+            for feature in weather_features:
+                if feature in row.index and pd.notna(row[feature]):
+                    value = float(row[feature])
+                    # Convert Fahrenheit to Celsius for temperature fields
+                    if feature in ['temperature', 'dewPoint', 'apparentTemperature'] and value > 50:
+                        value = (value - 32) * 5 / 9
+                    weather_data[feature] = value
+                else:
+                    weather_data[feature] = 0.0
+        
+        # Add historical AQI data
+        historical_aqi = []
+        if len(historical) > 0 and 'timestamp' in historical.columns:
+            historical_subset = historical.tail(48).copy()
+            
+            for _, row in historical_subset.iterrows():
+                aqi_value = 0
+                timestamp = row.get('timestamp', '')
+                
+                if 'AQI' in row.index and pd.notna(row['AQI']):
+                    aqi_value = float(row['AQI'])
+                else:
+                    # Calculate from PM2.5 if available
+                    if 'PM25' in row.index and pd.notna(row['PM25']):
+                        pm25 = float(row['PM25'])
+                        if pm25 <= 30:
+                            aqi_value = pm25 * 50 / 30
+                        elif pm25 <= 60:
+                            aqi_value = 50 + (pm25 - 30) * 50 / 30
+                        elif pm25 <= 90:
+                            aqi_value = 100 + (pm25 - 60) * 100 / 30
+                        elif pm25 <= 120:
+                            aqi_value = 200 + (pm25 - 90) * 100 / 30
+                        elif pm25 <= 250:
+                            aqi_value = 300 + (pm25 - 120) * 100 / 130
+                        else:
+                            aqi_value = 400 + (pm25 - 250) * 100 / 130
+                
+                if aqi_value > 0:
+                    historical_aqi.append({
+                        'timestamp': str(timestamp),
+                        'aqi': round(aqi_value, 1)
+                    })
+        
+        # Format response to match frontend expectations
+        result = {
+            'weather': weather_data,
+            'historical': historical_aqi,
+            'PM25': {},
+            'PM10': {},
+            'NO2': {},
+            'OZONE': {},
+            'overall': {}
+        }
+        
+        # Restructure predictions to match frontend format
+        for pollutant in ['PM25', 'PM10', 'NO2', 'OZONE']:
+            if pollutant in predictions_dict['predictions']:
+                for horizon in ['1h', '6h', '12h', '24h']:
+                    if horizon in predictions_dict['predictions'][pollutant]:
+                        pred = predictions_dict['predictions'][pollutant][horizon]
+                        result[pollutant][horizon] = {
+                            'category': pred['category'],
+                            'confidence': pred.get('confidence', pred.get('sub_index', 0) / 500),
+                            'aqi_min': pred.get('aqi_min', pred.get('sub_index', 0) - 25),
+                            'aqi_max': pred.get('aqi_max', pred.get('sub_index', 0) + 25),
+                            'aqi_mid': pred.get('aqi_mid', pred.get('sub_index', 0)),
+                            'concentration_range': (pred.get('value', 0) * 0.9, pred.get('value', 0) * 1.1),
+                            'value': pred.get('value', 0)
+                        }
+        
+        # Overall AQI per horizon
+        if 'overall_aqi' in predictions_dict:
+            for horizon, overall in predictions_dict['overall_aqi'].items():
+                result['overall'][horizon] = {
+                    'aqi_min': overall.get('aqi', 0) - 25,
+                    'aqi_max': overall.get('aqi', 0) + 25,
+                    'aqi_mid': overall.get('aqi', 0),
+                    'category': overall.get('category', 'Unknown'),
+                    'dominant_pollutant': overall.get('dominant_pollutant', 'Unknown'),
+                    'confidence': 0.85
+                }
         
         # Log summary
         for horizon in ['1h', '6h', '12h', '24h']:
-            overall = predictions['overall'][horizon]
-            logger.info(f"{horizon} forecast: AQI={overall['aqi_mid']:.1f} ({overall['category']})")
+            if horizon in result['overall']:
+                overall = result['overall'][horizon]
+                logger.info(f"{horizon} forecast: AQI={overall['aqi_mid']:.1f} ({overall['category']})")
         
-        return predictions
+        return result
+        
     except Exception as e:
         logger.error(f"Prediction error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -769,18 +611,13 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "version": "2.0.1-fixed",
+        "version": "3.0.0-lstm",
         "data_loaded": len(data_manager.data) > 0,
         "locations": len(data_manager.whitelist),
         "gemini_enabled": gemini_assistant.enabled,
         "gemini_model": gemini_assistant.model_name if gemini_assistant.enabled else "disabled",
-        "gemini_api_key_set": bool(Config.GEMINI_API_KEY),
-        "fixes_applied": [
-            "Zero prediction values fixed",
-            "Gemini API error handling improved",
-            "Model loading validation added",
-            "Fallback responses enhanced"
-        ]
+        "model_type": "LSTM Deep Learning",
+        "model_path": str(Config.MODEL_PATH)
     }
 
 # ============================================================================
@@ -790,7 +627,7 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
     logger.info("="*80)
-    logger.info("Starting AQI Dashboard API (Fixed Version)")
+    logger.info("Starting AQI Dashboard API (LSTM Version)")
     logger.info(f"Data file: {Config.DATA_PATH}")
     logger.info(f"Model path: {Config.MODEL_PATH}")
     logger.info(f"Gemini enabled: {gemini_assistant.enabled}")
