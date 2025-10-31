@@ -48,10 +48,14 @@ class GeminiAssistant:
             genai.configure(api_key=self.api_key)
             
             model_options = [
-                'gemini-1.5-flash',
-                'gemini-1.5-pro',
-                'gemini-pro'
-            ]
+                            "gemini-2.5-flash",
+                            "gemini-2.5-flash-lite",
+                            "gemini-2.5-flash-image",
+                            "gemini-2.0-flash",
+                            "gemini-2.0-flash-lite",
+                            "gemini-2.5-pro"
+                            ]
+
             
             for model_name in model_options:
                 try:
