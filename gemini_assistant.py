@@ -1,13 +1,14 @@
 """
 Enhanced Gemini AI Assistant with Safety Validation and Structured Output
 Production-ready version with comprehensive error handling and response validation
-FINAL FIXED VERSION: Handles safety blocks, finish reasons, and all edge cases
+FINAL FIXED VERSION: Handles safety blocks, finish reasons, and all edge cases betterly
 """
 
 import logging
 import json
 from typing import Dict, List
 import re
+
 
 logger = logging.getLogger(__name__)
 
