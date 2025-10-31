@@ -1,10 +1,11 @@
 """
 Enhanced Gemini AI Assistant with Safety Validation and Structured Output
 Production-ready version with comprehensive error handling and response validation
+FIXED VERSION: Corrected Gemini API parameters for structured output
 """
 
 import logging
-import json # <-- NEW: Import for JSON parsing
+import json
 from typing import Dict, List
 import re
 
@@ -23,9 +24,9 @@ class GeminiAssistant:
     Enhanced AI Assistant with:
     - User profile-aware responses
     - Safety validation
-    - Structured JSON output formatting (NEW)
+    - Structured JSON output formatting
     - Comprehensive error handling
-    - Reduced token usage (NEW)
+    - Reduced token usage (300 tokens)
     """
     
     def __init__(self, api_key: str = None):
@@ -34,7 +35,7 @@ class GeminiAssistant:
         self.model_name = None
         self.api_key = api_key
         
-        # Define the strict JSON schema for structured output (NEW)
+        # Define the strict JSON schema for structured output
         self.json_schema = {
             "type": "OBJECT",
             "properties": {
@@ -66,14 +67,13 @@ class GeminiAssistant:
             genai.configure(api_key=self.api_key)
             
             model_options = [
-                            "gemini-2.5-flash",
-                            "gemini-2.5-flash-lite",
-                            "gemini-2.5-flash-image",
-                            "gemini-2.0-flash",
-                            "gemini-2.0-flash-lite",
-                            "gemini-2.5-pro"
-                            ]
-
+                "gemini-2.5-flash",
+                "gemini-2.5-flash-lite",
+                "gemini-2.5-flash-image",
+                "gemini-2.0-flash",
+                "gemini-2.0-flash-lite",
+                "gemini-2.5-pro"
+            ]
             
             for model_name in model_options:
                 try:
@@ -84,7 +84,7 @@ class GeminiAssistant:
                             'temperature': 0.7,
                             'top_p': 0.8,
                             'top_k': 40,
-                            'max_output_tokens': 300, # <-- MODIFIED: Reduced from 800 to 300 for cost management
+                            'max_output_tokens': 300,
                         },
                         safety_settings=[
                             {
@@ -185,33 +185,59 @@ class GeminiAssistant:
             
             logger.info(f"Sending structured request to {self.model_name}...")
             
-            # <-- MODIFIED: Add response config for structured output
-            response = self.model.generate_content(
-                prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_schema": self.json_schema
-                }
-            )
+            # FIXED: Try structured output with proper parameter name
+            response = None
+            try:
+                # Attempt structured output (requires google-generativeai >= 0.3.0)
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        response_mime_type="application/json",
+                        response_schema=self.json_schema
+                    )
+                )
+                logger.info("✓ Using structured JSON output")
+            except (AttributeError, TypeError) as struct_error:
+                # Fallback: If structured output not supported, use regular mode
+                logger.warning(f"Structured output not supported, using regular mode: {struct_error}")
+                response = self.model.generate_content(prompt)
             
             if response and response.text:
-                logger.info(f"✓ Received JSON response from {self.model_name}")
+                logger.info(f"✓ Received response from {self.model_name}")
                 
-                # 1. Parse JSON output
+                # Parse JSON output
                 try:
                     json_response = json.loads(response.text)
-                except json.JSONDecodeError:
-                    logger.error(f"Failed to parse AI response as JSON: {response.text[:100]}...")
-                    # Fallback on JSON failure
-                    return {
-                        'response': self._static_response(context, user_profile),
-                        'source': 'static_fallback_json_error',
-                        'model': self.model_name,
-                        'validation': {'valid': False, 'warnings': ['AI output was not valid JSON']}
-                    }
+                    logger.info("✓ Successfully parsed JSON response")
+                except json.JSONDecodeError as json_err:
+                    logger.warning(f"Failed to parse AI response as JSON: {json_err}")
+                    logger.warning(f"Raw response: {response.text[:200]}...")
+                    
+                    # Fallback: Try to extract JSON from markdown code blocks
+                    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response.text, re.DOTALL)
+                    if json_match:
+                        try:
+                            json_response = json.loads(json_match.group(1))
+                            logger.info("✓ Extracted JSON from markdown code block")
+                        except json.JSONDecodeError:
+                            # Final fallback: use static response
+                            logger.error("Could not extract valid JSON, using static fallback")
+                            return {
+                                'response': self._static_response(context, user_profile),
+                                'source': 'static_fallback_json_error',
+                                'model': self.model_name,
+                                'validation': {'valid': False, 'warnings': ['AI output was not valid JSON']}
+                            }
+                    else:
+                        # No JSON found, use static response
+                        return {
+                            'response': self._static_response(context, user_profile),
+                            'source': 'static_fallback_json_error',
+                            'model': self.model_name,
+                            'validation': {'valid': False, 'warnings': ['AI output was not valid JSON']}
+                        }
 
-                # 2. Validate response content for safety and accuracy
-                # Use the string representation of the JSON for validation checks
+                # Validate response content for safety and accuracy
                 validation_result = self._validate_response(
                     str(json_response), 
                     aqi_mid, 
@@ -219,7 +245,7 @@ class GeminiAssistant:
                     user_profile
                 )
                 
-                # 3. Format JSON back into readable Markdown string
+                # Format JSON back into readable Markdown string
                 cleaned_response = self._format_json_response(json_response)
                 
                 return {
@@ -269,7 +295,6 @@ class GeminiAssistant:
             elif wind_speed > 20:
                 weather_impact += "High winds may resuspend particulate matter. "
         
-        # <-- MODIFIED: Changed persona and updated guidelines for JSON output
         prompt = f"""You are the **AQI Assistant**, an expert air quality health advisor for Delhi NCR, India. You provide evidence-based, personalized health recommendations.
 
 CURRENT AIR QUALITY SITUATION:
@@ -293,12 +318,18 @@ USER QUESTION:
 
 RESPONSE GUIDELINES:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. You MUST output a JSON object strictly following the provided schema. DO NOT include any text, headers, or markdown outside the JSON object.
+1. You MUST output a JSON object strictly following this schema:
+   {{
+     "title": "Brief 5-7 word title",
+     "situation_and_risk": "Assessment of air quality and health risks",
+     "risk_level_summary": "User's risk level and symptoms to watch",
+     "recommended_actions": ["Action 1", "Action 2", "Action 3", "Action 4"]
+   }}
 2. Address the user's specific question directly within the structured fields.
 3. Tailor advice to their risk level and health profile.
 4. Be specific, actionable, and use clear, non-technical language.
 5. The 'recommended_actions' array must contain 3-4 specific, prioritized, actionable steps.
-6. The entire response must be concise (max 300 output tokens).
+6. Keep response concise (max 300 tokens).
 
 CRITICAL SAFETY RULES:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -314,7 +345,7 @@ Provide your response now as a valid JSON object:"""
     
     def _format_json_response(self, json_data: Dict) -> str:
         """
-        NEW METHOD: Formats the structured JSON response back into a readable markdown string
+        Formats the structured JSON response back into a readable markdown string
         for consistent display on the dashboard.
         """
         if not json_data:
@@ -345,7 +376,6 @@ Provide your response now as a valid JSON object:"""
                           category: str, user_profile: Dict) -> Dict:
         """
         Comprehensive response validation for safety and accuracy
-        (Now validates content within the JSON string)
         
         Returns:
             Dict with 'valid' (bool) and 'warnings' (list of str)
@@ -399,8 +429,6 @@ Provide your response now as a valid JSON object:"""
             if not any(word in response_text.lower() for word in urgency_indicators):
                 warnings.append(f"Response should convey urgency at AQI {aqi:.0f}")
         
-        # <-- MODIFIED: Removed markdown check
-        
         return {
             'valid': len(warnings) == 0,
             'warnings': warnings,
@@ -409,8 +437,7 @@ Provide your response now as a valid JSON object:"""
     
     def _clean_response(self, response_text: str) -> str:
         """
-        DEPRECATED: This method is largely replaced by _format_json_response,
-        but kept for static/fallback responses and robust code structure.
+        Clean response text (used for static/fallback responses)
         """
         # Remove any disclaimers
         response_text = re.sub(r'(?i)(disclaimer|note):\s*.{0,200}', '', response_text)
