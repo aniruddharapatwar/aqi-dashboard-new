@@ -1,7 +1,7 @@
 """
 Enhanced Gemini AI Assistant with Safety Validation and Structured Output
 Production-ready version with comprehensive error handling and response validation
-FIXED VERSION: Corrected Gemini API parameters for structured output
+FINAL FIXED VERSION: Handles safety blocks, finish reasons, and all edge cases
 """
 
 import logging
@@ -27,6 +27,7 @@ class GeminiAssistant:
     - Structured JSON output formatting
     - Comprehensive error handling
     - Reduced token usage (300 tokens)
+    - Robust safety block handling
     """
     
     def __init__(self, api_key: str = None):
@@ -185,10 +186,10 @@ class GeminiAssistant:
             
             logger.info(f"Sending structured request to {self.model_name}...")
             
-            # FIXED: Try structured output with proper parameter name
+            # CRITICAL: Try to get response with proper error handling
             response = None
             try:
-                # Attempt structured output (requires google-generativeai >= 0.3.0)
+                # Attempt structured output
                 response = self.model.generate_content(
                     prompt,
                     generation_config=genai.types.GenerationConfig(
@@ -201,67 +202,159 @@ class GeminiAssistant:
                 # Fallback: If structured output not supported, use regular mode
                 logger.warning(f"Structured output not supported, using regular mode: {struct_error}")
                 response = self.model.generate_content(prompt)
+            except Exception as gen_error:
+                logger.error(f"Content generation failed: {gen_error}")
+                return {
+                    'response': self._static_response(context, user_profile),
+                    'source': 'static_generation_error',
+                    'model': self.model_name,
+                    'validation': {'valid': False, 'warnings': ['Content generation failed']}
+                }
+
+            # ============================================================================
+            # CRITICAL FIX: Check response validity BEFORE accessing .text
+            # ============================================================================
             
-            if response and response.text:
-                logger.info(f"✓ Received response from {self.model_name}")
+            # Check 1: Response exists
+            if not response:
+                logger.warning("No response received from Gemini")
+                return {
+                    'response': self._static_response(context, user_profile),
+                    'source': 'static_no_response',
+                    'model': self.model_name,
+                    'validation': {'valid': False, 'warnings': ['No response from AI']}
+                }
+            
+            # Check 2: Response has candidates
+            if not response.candidates or len(response.candidates) == 0:
+                logger.warning("Response has no candidates")
+                return {
+                    'response': self._static_response(context, user_profile),
+                    'source': 'static_no_candidates',
+                    'model': self.model_name,
+                    'validation': {'valid': False, 'warnings': ['No candidates in AI response']}
+                }
+            
+            # Check 3: Check finish_reason BEFORE accessing .text
+            # finish_reason values:
+            # 0 = FINISH_REASON_UNSPECIFIED
+            # 1 = STOP (normal completion)
+            # 2 = MAX_TOKENS
+            # 3 = SAFETY (blocked by safety filters)
+            # 4 = RECITATION
+            # 5 = OTHER
+            
+            candidate = response.candidates[0]
+            finish_reason = candidate.finish_reason
+            
+            # Map finish_reason to readable names
+            finish_reason_names = {
+                0: 'UNSPECIFIED',
+                1: 'STOP',
+                2: 'MAX_TOKENS',
+                3: 'SAFETY',
+                4: 'RECITATION',
+                5: 'OTHER'
+            }
+            finish_reason_name = finish_reason_names.get(finish_reason, f'UNKNOWN({finish_reason})')
+            
+            # Only proceed if finish_reason is STOP (1)
+            if finish_reason != 1:
+                logger.warning(f"Response blocked or incomplete. Finish reason: {finish_reason_name}")
                 
-                # Parse JSON output
-                try:
-                    json_response = json.loads(response.text)
-                    logger.info("✓ Successfully parsed JSON response")
-                except json.JSONDecodeError as json_err:
-                    logger.warning(f"Failed to parse AI response as JSON: {json_err}")
-                    logger.warning(f"Raw response: {response.text[:200]}...")
-                    
-                    # Fallback: Try to extract JSON from markdown code blocks
-                    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response.text, re.DOTALL)
-                    if json_match:
-                        try:
-                            json_response = json.loads(json_match.group(1))
-                            logger.info("✓ Extracted JSON from markdown code block")
-                        except json.JSONDecodeError:
-                            # Final fallback: use static response
-                            logger.error("Could not extract valid JSON, using static fallback")
-                            return {
-                                'response': self._static_response(context, user_profile),
-                                'source': 'static_fallback_json_error',
-                                'model': self.model_name,
-                                'validation': {'valid': False, 'warnings': ['AI output was not valid JSON']}
-                            }
-                    else:
-                        # No JSON found, use static response
+                # Provide specific warning based on finish reason
+                if finish_reason == 3:  # SAFETY
+                    warning_msg = 'AI response was blocked by safety filters'
+                elif finish_reason == 2:  # MAX_TOKENS
+                    warning_msg = 'AI response exceeded maximum tokens'
+                elif finish_reason == 4:  # RECITATION
+                    warning_msg = 'AI response flagged as potential recitation'
+                else:
+                    warning_msg = f'AI response incomplete (finish_reason: {finish_reason_name})'
+                
+                return {
+                    'response': self._static_response(context, user_profile),
+                    'source': 'static_blocked',
+                    'model': self.model_name,
+                    'validation': {'valid': False, 'warnings': [warning_msg]}
+                }
+            
+            # Check 4: Candidate has parts with content
+            if not candidate.content or not candidate.content.parts:
+                logger.warning("Response candidate has no content parts")
+                return {
+                    'response': self._static_response(context, user_profile),
+                    'source': 'static_no_parts',
+                    'model': self.model_name,
+                    'validation': {'valid': False, 'warnings': ['No content in AI response']}
+                }
+            
+            # NOW it's safe to access response.text
+            try:
+                response_text = response.text
+            except Exception as text_error:
+                logger.error(f"Failed to extract text from response: {text_error}")
+                return {
+                    'response': self._static_response(context, user_profile),
+                    'source': 'static_text_extraction_error',
+                    'model': self.model_name,
+                    'validation': {'valid': False, 'warnings': ['Failed to extract text from AI response']}
+                }
+            
+            logger.info(f"✓ Received valid response from {self.model_name}")
+            
+            # ============================================================================
+            # END CRITICAL FIX
+            # ============================================================================
+            
+            # Parse JSON output
+            try:
+                json_response = json.loads(response_text)
+                logger.info("✓ Successfully parsed JSON response")
+            except json.JSONDecodeError as json_err:
+                logger.warning(f"Failed to parse AI response as JSON: {json_err}")
+                logger.warning(f"Raw response: {response_text[:200]}...")
+                
+                # Fallback: Try to extract JSON from markdown code blocks
+                json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+                if json_match:
+                    try:
+                        json_response = json.loads(json_match.group(1))
+                        logger.info("✓ Extracted JSON from markdown code block")
+                    except json.JSONDecodeError:
+                        logger.error("Could not extract valid JSON, using static fallback")
                         return {
                             'response': self._static_response(context, user_profile),
                             'source': 'static_fallback_json_error',
                             'model': self.model_name,
                             'validation': {'valid': False, 'warnings': ['AI output was not valid JSON']}
                         }
+                else:
+                    # No JSON found, use static response
+                    return {
+                        'response': self._static_response(context, user_profile),
+                        'source': 'static_fallback_json_error',
+                        'model': self.model_name,
+                        'validation': {'valid': False, 'warnings': ['AI output was not valid JSON']}
+                    }
 
-                # Validate response content for safety and accuracy
-                validation_result = self._validate_response(
-                    str(json_response), 
-                    aqi_mid, 
-                    category, 
-                    user_profile
-                )
-                
-                # Format JSON back into readable Markdown string
-                cleaned_response = self._format_json_response(json_response)
-                
-                return {
-                    'response': cleaned_response,
-                    'source': 'gemini',
-                    'model': self.model_name,
-                    'validation': validation_result
-                }
-            else:
-                logger.warning("Empty response from Gemini, using fallback")
-                return {
-                    'response': self._static_response(context, user_profile),
-                    'source': 'static_fallback',
-                    'model': self.model_name,
-                    'validation': {'valid': True, 'warnings': ['Empty AI response']}
-                }
+            # Validate response content for safety and accuracy
+            validation_result = self._validate_response(
+                str(json_response), 
+                aqi_mid, 
+                category, 
+                user_profile
+            )
+            
+            # Format JSON back into readable Markdown string
+            cleaned_response = self._format_json_response(json_response)
+            
+            return {
+                'response': cleaned_response,
+                'source': 'gemini',
+                'model': self.model_name,
+                'validation': validation_result
+            }
                 
         except Exception as e:
             logger.error(f"Gemini error: {e}", exc_info=True)
