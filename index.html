@@ -722,7 +722,7 @@
                                              x-text="predictions[pollutant.key]?.[horizon]?.category?.replace('_', ' ')">
                                         </div>
                                         <div class="text-sm text-gray-600 font-semibold">
-                                            AQI: <span x-text="Math.round(predictions[pollutant.key]?.[horizon]?.aqi_min)"></span>-<span x-text="Math.round(predictions[pollutant.key]?.[horizon]?.aqi_max)"></span>
+                                             Sub-Index: <span x-text="Math.round(predictions[pollutant.key]?.[horizon]?.aqi_min)"></span>-<span x-text="Math.round(predictions[pollutant.key]?.[horizon]?.aqi_max)"></span>
                                         </div>
                                     </div>
                                 </div>
@@ -1861,7 +1861,7 @@
                         'Severe': '#991b1b',         // 🔴 Dark Red
                         
                         // US EPA Categories
-                        'Unhealthy_for_Sensitive': '#f97316',  // 🟠 Orange
+                        'Unhealthy (for sensitive)': '#f97316',  // 🟠 Orange
                         'Unhealthy': '#ef4444',                // 🔴 Red
                         'Very_Unhealthy': '#b91c1c',           // 🔴 Medium-Dark Red (CHANGED!)
                         'Hazardous': '#991b1b'                 // 🔴 Dark Red
@@ -1880,7 +1880,7 @@
                         'Severe': 'linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%)',
 
                         // US EPA Categories
-                        'Unhealthy_for_Sensitive': 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                        'Unhealthy (for sensitive)': 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
                         'Unhealthy': 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                         'Very_Unhealthy': 'linear-gradient(135deg, #b91c1c 0%, #991b1b 100%)',  // CHANGED!
                         'Hazardous': 'linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%)'
