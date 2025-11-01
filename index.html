@@ -19,7 +19,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     
-    <!-- 🚨 API Configuration - REPLACE WITH YOUR RAILWAY URL -->
+    <!-- ðŸš¨ API Configuration - REPLACE WITH YOUR RAILWAY URL -->
     <script>
         window.API_CONFIG = {
             
@@ -378,7 +378,7 @@
                             <h1 class="text-3xl font-black text-gray-900 tracking-tight">
                                 AQI Dashboard
                             </h1>
-                            <p class="text-sm text-gray-600 font-medium">Delhi NCR • Real-time Air Quality Monitoring v2.0</p>
+                            <p class="text-sm text-gray-600 font-medium">Delhi NCR â€¢ Real-time Air Quality Monitoring v2.0</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
@@ -448,8 +448,8 @@
                         <div class="hidden md:flex items-center gap-3">
                             <div class="px-4 py-2 rounded-full" :class="autoRefresh ? 'bg-green-100' : 'bg-gray-100'">
                                 <span class="text-xs font-bold" :class="autoRefresh ? 'text-green-700' : 'text-gray-700'">
-                                    <span x-show="autoRefresh">● LIVE</span>
-                                    <span x-show="!autoRefresh">○ PAUSED</span>
+                                    <span x-show="autoRefresh">â— LIVE</span>
+                                    <span x-show="!autoRefresh">â—‹ PAUSED</span>
                                     <span x-show="autoRefresh && refreshTimer > 0" class="ml-1" x-text="refreshTimer + 's'"></span>
                                 </span>
                             </div>
@@ -546,7 +546,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                     <!-- Region -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-3">📍 Region</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-3">ðŸ" Region</label>
                         <select x-model="selectedRegion" @change="loadLocations()" 
                                 class="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all text-sm font-medium"
                                 aria-label="Select region">
@@ -558,7 +558,7 @@
 
                     <!-- Location -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-3">📌 Location</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-3">ðŸ"Œ Location</label>
                         <select x-model="selectedLocation" @change="loadPredictions()" 
                                 class="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all text-sm font-medium"
                                 aria-label="Select location">
@@ -571,7 +571,7 @@
 
                     <!-- Forecast -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-3">⏱️ Forecast</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-3">â±ï¸ Forecast</label>
                         <div class="grid grid-cols-4 gap-2">
                             <template x-for="h in horizons" :key="h">
                                 <button @click="horizon = h" 
@@ -586,26 +586,26 @@
 
                     <!-- Standard -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-3">🎯 Standard</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-3">ðŸŽ¯ Standard</label>
                         <div class="grid grid-cols-2 gap-2">
                             <button @click="standard = 'IN'; loadPredictions()" 
                                     :class="standard === 'IN' ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'"
                                     class="px-4 py-2.5 rounded-xl font-bold text-xs transition-all border-2 border-gray-200"
                                     aria-label="Indian NAQI standard">
-                                🇮🇳 NAQI
+                                ðŸ‡®ðŸ‡³ NAQI
                             </button>
                             <button @click="standard = 'US'; loadPredictions()" 
                                     :class="standard === 'US' ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'"
                                     class="px-4 py-2.5 rounded-xl font-bold text-xs transition-all border-2 border-gray-200"
                                     aria-label="US EPA standard">
-                                🇺🇸 EPA
+                                ðŸ‡ºðŸ‡¸ EPA
                             </button>
                         </div>
                     </div>
 
                     <!-- Settings -->
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-3">⚙️ Settings</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-3">âš™ï¸ Settings</label>
                         <div class="space-y-2">
                             <button @click="autoRefresh = !autoRefresh; toggleAutoRefresh()" 
                                     class="w-full px-4 py-2.5 rounded-xl font-bold text-xs transition-all border-2 flex items-center justify-center gap-2"
@@ -666,7 +666,7 @@
                                 
                                 <div class="relative z-10">
                                     <div class="text-white/90 text-xs font-bold uppercase tracking-wider mb-3 aqi-text-shadow">
-                                        <span x-text="selectedLocation"></span> • <span x-text="horizon"></span> Forecast
+                                        <span x-text="selectedLocation"></span> â€¢ <span x-text="horizon"></span> Forecast
                                     </div>
                                     <div class="text-8xl font-black mb-4 text-white aqi-text-shadow leading-none">
                                         <div x-text="Math.round(predictions.overall[horizon]?.aqi_mid)"></div>
@@ -701,7 +701,7 @@
                                         <div>
                                             <h3 class="text-sm font-bold text-gray-600 uppercase tracking-wider mb-1" x-text="pollutant.name"></h3>
                                             <div class="text-xs text-gray-500 tooltip">
-                                                <span>ℹ️ Info</span>
+                                                <span>â„¹ï¸ Info</span>
                                                 <span class="tooltip-text" x-text="pollutant.description"></span>
                                             </div>
                                         </div>
@@ -743,17 +743,17 @@
                             </h3>
                             <div class="grid grid-cols-3 gap-4">
                                 <div class="text-center p-4 bg-gray-50 rounded-xl">
-                                    <div class="text-3xl mb-2">🌡️</div>
-                                    <div class="text-2xl font-bold text-gray-900" x-text="weather.temperature + '°C'"></div>
+                                    <div class="text-3xl mb-2">ðŸŒ¡ï¸</div>
+                                    <div class="text-2xl font-bold text-gray-900" x-text="weather.temperature + 'Â°C'"></div>
                                     <div class="text-xs text-gray-600 font-semibold">Temperature</div>
                                 </div>
                                 <div class="text-center p-4 bg-gray-50 rounded-xl">
-                                    <div class="text-3xl mb-2">💧</div>
+                                    <div class="text-3xl mb-2">ðŸ'§</div>
                                     <div class="text-2xl font-bold text-gray-900" x-text="weather.humidity + '%'"></div>
                                     <div class="text-xs text-gray-600 font-semibold">Humidity</div>
                                 </div>
                                 <div class="text-center p-4 bg-gray-50 rounded-xl">
-                                    <div class="text-3xl mb-2">💨</div>
+                                    <div class="text-3xl mb-2">ðŸ'¨</div>
                                     <div class="text-2xl font-bold text-gray-900" x-text="weather.windSpeed + ' km/h'"></div>
                                     <div class="text-xs text-gray-600 font-semibold">Wind Speed</div>
                                 </div>
@@ -772,7 +772,7 @@
                                 <div class="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border-2 border-green-200">
                                     <div class="flex items-center gap-3">
                                         <div class="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center">
-                                            <span class="text-2xl">✨</span>
+                                            <span class="text-2xl">âœ¨</span>
                                         </div>
                                         <div>
                                             <div class="font-bold text-gray-900" x-text="bestTime.period"></div>
@@ -827,13 +827,13 @@
                         </div>
                     </div>
 
-                    <!-- AI Assistant - ENHANCED WITH VALIDATION DISPLAY -->
+                    <!-- AI Assistant - ENHANCED WITH MULTIPLE HEALTH CONDITIONS -->
                     <div class="glass-card rounded-3xl shadow-xl overflow-hidden">
                         <!-- Header -->
                         <div class="gradient-primary p-6">
                             <div class="flex items-center gap-4">
                                 <div class="w-14 h-14 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center">
-                                    <span class="text-3xl">🤖</span>
+                                    <span class="text-3xl">ðŸ¤–</span>
                                 </div>
                                 <div class="flex-1">
                                     <h2 class="text-2xl font-black text-white">AI Health Assistant</h2>
@@ -843,7 +843,7 @@
                         </div>
 
                         <div class="p-6 space-y-6">
-                            <!-- Profile Selector -->
+                            <!-- Profile Selector - UPDATED FOR MULTIPLE CONDITIONS -->
                             <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-100">
                                 <div class="flex items-center gap-2 mb-4">
                                     <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -859,43 +859,67 @@
                                         <select x-model="userProfile.ageCategory" 
                                                 class="w-full px-3 py-2 bg-white border-2 border-blue-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all text-sm">
                                             <option value="">Select Age</option>
-                                            <option value="child">👶 Child (0-12 years)</option>
-                                            <option value="teenager">🧑 Teenager (13-17 years)</option>
-                                            <option value="adult">👨 Adult (18-64 years)</option>
-                                            <option value="elderly">👴 Elderly Person (65+ years)</option>
+                                            <option value="child">ðŸ'¶ Child (0-12 years)</option>
+                                            <option value="teenager">ðŸ§' Teenager (13-17 years)</option>
+                                            <option value="adult">ðŸ'¨ Adult (18-64 years)</option>
+                                            <option value="elderly">ðŸ'´ Elderly Person (65+ years)</option>
                                         </select>
                                     </div>
                                     
-                                    <!-- Health Category -->
-                                    <div>
-                                        <label class="block text-xs font-bold text-gray-700 mb-2">Health Condition</label>
-                                        <select x-model="userProfile.healthCategory" 
-                                                class="w-full px-3 py-2 bg-white border-2 border-blue-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all text-sm">
-                                            <option value="">No Condition</option>
-                                            <option value="asthma">😷 Asthma</option>
-                                            <option value="heart_condition">❤️ Heart Condition</option>
-                                            <option value="respiratory">🫁 Respiratory Issues</option>
-                                            <option value="copd">🫁 COPD</option>
-                                            <option value="diabetes">💉 Diabetes</option>
-                                            <option value="pregnant">🤰 Pregnant Woman</option>
-                                        </select>
+                                    <!-- Health Conditions (Multiple Select with Checkboxes) -->
+                                    <div class="md:col-span-2">
+                                        <label class="block text-xs font-bold text-gray-700 mb-2">Health Conditions (Select All That Apply)</label>
+                                        <div class="grid grid-cols-2 gap-2 bg-white border-2 border-blue-200 rounded-lg p-3 max-h-32 overflow-y-auto custom-scrollbar">
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="asthma" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>ðŸ˜· Asthma</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="heart_condition" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>â¤ï¸ Heart Condition</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="respiratory" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>ðŸ« Respiratory Issues</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="copd" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>ðŸ« COPD</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="diabetes" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>ðŸ'‰ Diabetes</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="pregnant" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>ðŸ¤° Pregnant</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="hypertension" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>ðŸ©º Hypertension</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="allergies" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>ðŸ¤§ Allergies</span>
+                                            </label>
+                                        </div>
                                     </div>
                                     
                                     <!-- Gender -->
-                                    <div>
+                                    <div class="md:col-span-1">
                                         <label class="block text-xs font-bold text-gray-700 mb-2">Gender</label>
                                         <select x-model="userProfile.gender" 
                                                 class="w-full px-3 py-2 bg-white border-2 border-blue-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all text-sm">
                                             <option value="">Prefer not to say</option>
-                                            <option value="male">👨 Male</option>
-                                            <option value="female">👩 Female</option>
-                                            <option value="other">🧑 Other</option>
+                                            <option value="male">ðŸ'¨ Male</option>
+                                            <option value="female">ðŸ'© Female</option>
+                                            <option value="other">ðŸ§' Other</option>
                                         </select>
                                     </div>
                                 </div>
                                 
                                 <p class="text-xs text-blue-700 font-medium mt-4 flex items-center gap-1" 
-                                   x-show="userProfile.ageCategory || userProfile.healthCategory || userProfile.gender">
+                                   x-show="userProfile.ageCategory || userProfile.healthConditions.length > 0 || userProfile.gender">
                                     <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                                         <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
                                     </svg>
@@ -911,7 +935,7 @@
                                             <div :class="msg.role === 'user' ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white ml-12' : 'bg-white text-gray-800 mr-12 border-2 border-gray-100'"
                                                  class="rounded-2xl px-4 py-3 shadow-md max-w-2xl">
                                                 <div class="text-xs font-bold mb-2 opacity-80"
-                                                     x-text="msg.role === 'user' ? 'You' : '🤖 AI Assistant'">
+                                                     x-text="msg.role === 'user' ? 'You' : 'ðŸ¤– AI Assistant'">
                                                 </div>
                                                 <div class="text-sm leading-relaxed whitespace-pre-wrap" x-html="formatResponse(msg.content)"></div>
                                                 
@@ -940,7 +964,7 @@
                                     <!-- Typing Indicator -->
                                     <div x-show="isTyping" class="flex justify-start chat-message">
                                         <div class="bg-white text-gray-800 mr-12 border-2 border-gray-100 rounded-2xl px-4 py-3 shadow-md">
-                                            <div class="text-xs font-bold mb-2 opacity-80">🤖 AI Assistant</div>
+                                            <div class="text-xs font-bold mb-2 opacity-80">ðŸ¤– AI Assistant</div>
                                             <div class="flex items-center gap-2">
                                                 <div class="flex gap-1">
                                                     <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0s"></div>
@@ -990,7 +1014,7 @@
 
         <!-- Footer -->
         <footer class="mt-16 pb-8 text-center text-white/60 text-sm">
-            <p>© 2025 AQI Dashboard v2.0. Enhanced AI with Safety Validation. Data for informational purposes only.</p>
+            <p>Â© 2025 AQI Dashboard v2.0. Enhanced AI with Safety Validation. Data for informational purposes only.</p>
         </footer>
     </div>
 
@@ -1010,19 +1034,19 @@
                 loading: false,
                 userProfile: {
                     ageCategory: '',
-                    healthCategory: '',
+                    healthConditions: [],  // CHANGED: Array instead of single string
                     gender: ''
                 },
                 messages: [
-                    { role: 'assistant', content: '👋 Hello! I\'m your enhanced AI air quality assistant with safety validation. Select your profile above and ask me about current air quality, health advice, or pollutant risks!' }
+                    { role: 'assistant', content: 'ðŸ'‹ Hello! I\'m your enhanced AI air quality assistant with safety validation. Select your profile above and ask me about current air quality, health advice, or pollutant risks!' }
                 ],
                 userInput: '',
                 isTyping: false,
                 pollutants: [
                     { key: 'PM25', name: 'PM2.5', description: 'Fine particles smaller than 2.5 micrometers' },
                     { key: 'PM10', name: 'PM10', description: 'Particles smaller than 10 micrometers' },
-                    { key: 'NO2', name: 'NO₂', description: 'Nitrogen Dioxide from combustion' },
-                    { key: 'OZONE', name: 'O₃', description: 'Ground-level ozone from reactions' }
+                    { key: 'NO2', name: 'NOâ‚‚', description: 'Nitrogen Dioxide from combustion' },
+                    { key: 'OZONE', name: 'Oâ‚ƒ', description: 'Ground-level ozone from reactions' }
                 ],
                 
                 // Features
@@ -1176,8 +1200,8 @@
                     if (this.notificationsEnabled && Notification.permission === 'granted') {
                         new Notification(title, {
                             body: body,
-                            icon: '☁️',
-                            badge: '☁️'
+                            icon: 'â˜ï¸',
+                            badge: 'â˜ï¸'
                         });
                     }
                 },
@@ -1295,6 +1319,7 @@
                     }
                 },
 
+                // UPDATED: getProfileLabel to handle array of conditions
                 getProfileLabel() {
                     const parts = [];
                     
@@ -1309,7 +1334,9 @@
                         'respiratory': 'with respiratory issues',
                         'copd': 'with COPD',
                         'diabetes': 'with diabetes',
-                        'pregnant': 'pregnant'
+                        'pregnant': 'pregnant',
+                        'hypertension': 'with hypertension',
+                        'allergies': 'with allergies'
                     };
                     
                     const genderLabels = {
@@ -1324,8 +1351,20 @@
                         parts.push(genderLabels[this.userProfile.gender]);
                     }
                     
-                    if (this.userProfile.healthCategory) {
-                        parts.push(healthLabels[this.userProfile.healthCategory] || this.userProfile.healthCategory);
+                    // CHANGED: Handle array of health conditions
+                    if (this.userProfile.healthConditions && this.userProfile.healthConditions.length > 0) {
+                        const healthDescriptions = this.userProfile.healthConditions.map(
+                            cond => healthLabels[cond] || cond
+                        );
+                        
+                        if (healthDescriptions.length === 1) {
+                            parts.push(healthDescriptions[0]);
+                        } else if (healthDescriptions.length === 2) {
+                            parts.push(healthDescriptions.join(' and '));
+                        } else {
+                            const lastCondition = healthDescriptions.pop();
+                            parts.push(healthDescriptions.join(', ') + ', and ' + lastCondition);
+                        }
                     }
                     
                     return parts.length > 0 ? parts.join(' ') : 'general public';
@@ -1373,7 +1412,7 @@
                         
                         if (data.historical && Array.isArray(data.historical)) {
                             this.historicalData = data.historical;
-                            console.log('✓ Loaded', this.historicalData.length, 'historical data points');
+                            console.log('âœ" Loaded', this.historicalData.length, 'historical data points');
                         } else {
                             this.historicalData = [];
                         }
@@ -1479,8 +1518,8 @@
                     // 1. Convert **bold** to <strong>
                     text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
                     
-                    // 2. Handle bullet points (•, -, *, numbers)
-                    text = text.replace(/^[\s]*([•\-\*]|\d+\.)\s+(.+)$/gm, (match, marker, content) => {
+                    // 2. Handle bullet points (â€¢, -, *, numbers)
+                    text = text.replace(/^[\s]*([â€¢\-\*]|\d+\.)\s+(.+)$/gm, (match, marker, content) => {
                         return `<li class="ml-2">${content.trim()}</li>`;
                     });
                     
@@ -1489,10 +1528,10 @@
                         return `<ul class="space-y-1 mt-2 mb-3 list-disc list-inside">${match}</ul>`;
                     });
                     
-                    // 4. Double line breaks → paragraphs
+                    // 4. Double line breaks â†' paragraphs
                     text = text.replace(/\n\n+/g, '</p><p class="mt-3 mb-3">');
                     
-                    // 5. Single line breaks → <br>
+                    // 5. Single line breaks â†' <br>
                     text = text.replace(/\n/g, '<br>');
                     
                     // 6. Wrap in <p> if not already structured
@@ -1507,8 +1546,9 @@
                     return text.trim();
                 },
 
+                // UPDATED: sendMessage to send array of health conditions
                 async sendMessage() {
-                    console.log('📤 Send message called');
+                    console.log('ðŸ"¤ Send message called');
                     
                     if (!this.userInput.trim()) {
                         return;
@@ -1540,19 +1580,20 @@
                             };
                         }
                         
+                        // CHANGED: Send health_conditions as array
                         const requestBody = {
                             message: userMessage,
                             location: this.selectedLocation,
                             aqi_data: aqiData,
                             user_profile: {
                                 age_category: this.userProfile.ageCategory,
-                                health_category: this.userProfile.healthCategory,
+                                health_conditions: this.userProfile.healthConditions,  // ARRAY
                                 gender: this.userProfile.gender,
                                 profile_label: this.getProfileLabel()
                             }
                         };
                         
-                        console.log('📡 Sending request to:', `${this.API_URL}/chat`);
+                        console.log('ðŸ"¡ Sending request to:', `${this.API_URL}/chat`);
                         
                         const response = await fetch(`${this.API_URL}/chat`, {
                             method: 'POST',
@@ -1562,12 +1603,12 @@
                         
                         if (!response.ok) {
                             const errorText = await response.text();
-                            console.error('⚠ HTTP error:', response.status, errorText);
+                            console.error('âš  HTTP error:', response.status, errorText);
                             throw new Error(`HTTP ${response.status}: ${errorText}`);
                         }
                         
                         const data = await response.json();
-                        console.log('✓ Response received:', data);
+                        console.log('âœ" Response received:', data);
                         
                         // Add message with validation info
                         this.messages.push({ 
@@ -1583,7 +1624,7 @@
                         }
                         
                     } catch (error) {
-                        console.error('⚠ Error sending message:', error);
+                        console.error('âš  Error sending message:', error);
                         this.messages.push({ 
                             role: 'assistant', 
                             content: `Sorry, I encountered an error: ${error.message}. Please try again or contact support if the issue persists.`,
@@ -1610,27 +1651,27 @@
                     
                     if (aqi <= 50) {
                         this.healthRecommendations = [
-                            { icon: '🏃', title: 'Exercise Freely', description: 'Air quality is excellent. Perfect for all outdoor activities and exercise.', color: 'green' },
-                            { icon: '🪟', title: 'Ventilate Well', description: 'Keep windows open to refresh indoor air with clean outdoor air.', color: 'green' },
-                            { icon: '👨‍👩‍👧', title: 'Family Activities', description: 'Ideal conditions for children and elderly to spend time outdoors.', color: 'green' }
+                            { icon: 'ðŸƒ', title: 'Exercise Freely', description: 'Air quality is excellent. Perfect for all outdoor activities and exercise.', color: 'green' },
+                            { icon: 'ðŸªŸ', title: 'Ventilate Well', description: 'Keep windows open to refresh indoor air with clean outdoor air.', color: 'green' },
+                            { icon: 'ðŸ'¨â€ðŸ'©â€ðŸ'§', title: 'Family Activities', description: 'Ideal conditions for children and elderly to spend time outdoors.', color: 'green' }
                         ];
                     } else if (aqi <= 100) {
                         this.healthRecommendations = [
-                            { icon: '🚶', title: 'Moderate Activity', description: 'Generally safe for outdoor activities. Sensitive groups should limit prolonged exertion.', color: 'yellow' },
-                            { icon: '⏱️', title: 'Time Awareness', description: 'Consider timing outdoor activities during better air quality hours.', color: 'yellow' },
-                            { icon: '👀', title: 'Monitor Symptoms', description: 'Watch for any breathing discomfort, especially if you\'re sensitive.', color: 'yellow' }
+                            { icon: 'ðŸš¶', title: 'Moderate Activity', description: 'Generally safe for outdoor activities. Sensitive groups should limit prolonged exertion.', color: 'yellow' },
+                            { icon: 'â±ï¸', title: 'Time Awareness', description: 'Consider timing outdoor activities during better air quality hours.', color: 'yellow' },
+                            { icon: 'ðŸ'€', title: 'Monitor Symptoms', description: 'Watch for any breathing discomfort, especially if you\'re sensitive.', color: 'yellow' }
                         ];
                     } else if (aqi <= 200) {
                         this.healthRecommendations = [
-                            { icon: '😷', title: 'Wear Masks', description: 'Use N95 masks outdoors. Sensitive groups should reduce outdoor exposure.', color: 'orange' },
-                            { icon: '🏠', title: 'Stay Indoors', description: 'Limit outdoor activities. Keep windows closed and use air purifiers.', color: 'orange' },
-                            { icon: '💊', title: 'Medical Attention', description: 'Those with respiratory conditions should keep medications handy.', color: 'orange' }
+                            { icon: 'ðŸ˜·', title: 'Wear Masks', description: 'Use N95 masks outdoors. Sensitive groups should reduce outdoor exposure.', color: 'orange' },
+                            { icon: 'ðŸ ', title: 'Stay Indoors', description: 'Limit outdoor activities. Keep windows closed and use air purifiers.', color: 'orange' },
+                            { icon: 'ðŸ'Š', title: 'Medical Attention', description: 'Those with respiratory conditions should keep medications handy.', color: 'orange' }
                         ];
                     } else {
                         this.healthRecommendations = [
-                            { icon: '🚨', title: 'Avoid Outdoors', description: 'Everyone should avoid all outdoor activities. Stay indoors with air purifiers.', color: 'red' },
-                            { icon: '😷', title: 'N95 Masks Required', description: 'Wear properly fitted N95 masks if you must go outside.', color: 'red' },
-                            { icon: '🏥', title: 'Seek Medical Help', description: 'Contact healthcare providers if experiencing breathing difficulties.', color: 'red' }
+                            { icon: 'ðŸš¨', title: 'Avoid Outdoors', description: 'Everyone should avoid all outdoor activities. Stay indoors with air purifiers.', color: 'red' },
+                            { icon: 'ðŸ˜·', title: 'N95 Masks Required', description: 'Wear properly fitted N95 masks if you must go outside.', color: 'red' },
+                            { icon: 'ðŸ¥', title: 'Seek Medical Help', description: 'Contact healthcare providers if experiencing breathing difficulties.', color: 'red' }
                         ];
                     }
                 },
@@ -1642,12 +1683,12 @@
                     
                     if (aqi > 200) {
                         this.sendBrowserNotification(
-                            '🚨 Severe Air Quality Alert',
+                            'ðŸš¨ Severe Air Quality Alert',
                             `AQI is ${aqi} in ${this.selectedLocation}. Avoid outdoor activities!`
                         );
                     } else if (aqi > 100) {
                         this.sendBrowserNotification(
-                            '⚠️ Unhealthy Air Quality',
+                            'âš ï¸ Unhealthy Air Quality',
                             `AQI is ${aqi} in ${this.selectedLocation}. Limit outdoor exposure.`
                         );
                     }
