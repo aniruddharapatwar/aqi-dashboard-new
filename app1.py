@@ -132,11 +132,11 @@ class DataManager:
             return pd.DataFrame(columns=['lat', 'lon', 'timestamp'])
     
     def load_whitelist(self):
-        """Load whitelist from CSV ONLY - no augmentation"""
+        """Load whitelist and augment with actual data locations"""
         try:
             whitelist = {}
             
-            # Load ONLY from the whitelist CSV
+            # Load original whitelist if exists
             if os.path.exists(Config.WHITELIST_PATH):
                 df = pd.read_csv(Config.WHITELIST_PATH)
                 for _, row in df.iterrows():
@@ -147,12 +147,33 @@ class DataManager:
                         'pin': row.get('PIN Code', ''),
                         'area': row.get('Area/Locality', row['Place'])
                     }
-                logger.info(f"✓ Loaded {len(whitelist)} locations from whitelist CSV")
-            else:
-                logger.error(f"Whitelist CSV not found: {Config.WHITELIST_PATH}")
+                logger.info(f"✓ Loaded {len(whitelist)} locations from whitelist")
+            
+            # Add locations from actual data
+            if len(self.data) > 0 and 'location' in self.data.columns:
+                location_groups = self.data.groupby(['lat', 'lon']).agg({
+                    'location': 'first',
+                    'pincode': lambda x: x.dropna().iloc[0] if len(x.dropna()) > 0 else '',
+                    'region': lambda x: x.dropna().iloc[0] if len(x.dropna()) > 0 else 'Unknown'
+                }).reset_index()
+                
+                added = 0
+                for _, row in location_groups.iterrows():
+                    loc_name = row['location']
+                    if pd.notna(loc_name) and str(loc_name).strip():
+                        whitelist[loc_name] = {
+                            'region': row['region'] if pd.notna(row['region']) else 'Central Delhi',
+                            'lat': row['lat'],
+                            'lon': row['lon'],
+                            'pin': row['pincode'] if pd.notna(row['pincode']) else '',
+                            'area': loc_name
+                        }
+                        added += 1
+                
+                logger.info(f"✓ Added {added} locations from actual data")
             
             if len(whitelist) == 0:
-                logger.error("No locations loaded from whitelist!")
+                logger.error("No locations loaded!")
             
             return whitelist
             
