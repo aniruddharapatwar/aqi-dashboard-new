@@ -1,7 +1,6 @@
 """
 Complete LSTM Model Predictor with Comprehensive AQI Calculator
 PRODUCTION VERSION: Proper feature alignment, robust error handling
-FIXED: US EPA AQI calculation independent of Indian categories
 """
 
 import pickle
@@ -70,12 +69,17 @@ US_AQI_BREAKPOINTS = {
 }
 
 US_AQI_INDEX = {
-    'Good': (0, 50),
-    'Moderate': (51, 100),
-    'Unhealthy_for_Sensitive': (101, 150),
-    'Unhealthy': (151, 200),
-    'Very_Unhealthy': (201, 300),
-    'Hazardous': (301, 500)
+    'Good': (0, 50), 'Moderate': (51, 100), 'Unhealthy_for_Sensitive': (101, 150),
+    'Unhealthy': (151, 200), 'Very_Unhealthy': (201, 300), 'Hazardous': (301, 500)
+}
+
+CATEGORY_MAPPING = {
+    'Good': {'us': 'Good'},
+    'Satisfactory': {'us': 'Moderate'},
+    'Moderate': {'us': 'Unhealthy_for_Sensitive'},
+    'Poor': {'us': 'Unhealthy'},
+    'Very_Poor': {'us': 'Very_Unhealthy'},
+    'Severe': {'us': 'Hazardous'}
 }
 
 
@@ -262,13 +266,12 @@ class SequenceBuilder:
 
 
 # ============================================================================
-# AQI CALCULATOR - FIXED US EPA CALCULATION
+# AQI CALCULATOR
 # ============================================================================
 
 class AQICalculator:
     """
     Calculate AQI from pollutant concentrations using Indian and US standards
-    FIXED: US EPA calculation now independent of Indian categories
     """
     
     def concentration_to_category(self, concentration: float, pollutant: str) -> str:
@@ -281,20 +284,6 @@ class AQICalculator:
         
         # If concentration exceeds all ranges, return Severe
         return 'Severe'
-    
-    def concentration_to_us_category(self, concentration: float, pollutant: str) -> str:
-        """
-        Map concentration to US EPA category (independent of Indian AQI)
-        FIXED: Direct mapping from concentration to US category
-        """
-        breakpoints = US_AQI_BREAKPOINTS.get(pollutant, {})
-        
-        for category, (low, high) in breakpoints.items():
-            if low <= concentration <= high:
-                return category
-        
-        # If concentration exceeds all ranges, return Hazardous
-        return 'Hazardous'
     
     def calculate_sub_index_indian(self, pollutant: str, category: str, concentration: float) -> Dict:
         """Calculate Indian sub-index for a pollutant"""
@@ -320,26 +309,16 @@ class AQICalculator:
             'concentration': concentration
         }
     
-    def calculate_sub_index_us(self, pollutant: str, concentration: float) -> Dict:
-        """
-        Calculate US EPA sub-index directly from concentration
-        FIXED: No dependency on Indian categories!
+    def calculate_sub_index_us(self, pollutant: str, category: str, concentration: float) -> Dict:
+        """Calculate US sub-index for a pollutant"""
+        # Map Indian category to US category
+        us_category = CATEGORY_MAPPING.get(category, {}).get('us', 'Hazardous')
         
-        Args:
-            pollutant: Pollutant name (PM25, PM10, NO2, OZONE)
-            concentration: Pollutant concentration in µg/m³
-        
-        Returns:
-            Dictionary with sub_index, category, pollutant, concentration
-        """
-        # Find which US category the concentration falls into (independent calculation)
-        us_category = self.concentration_to_us_category(concentration, pollutant)
-        
-        # Get US ranges for THIS category
+        # Get US ranges
         conc_range = US_AQI_BREAKPOINTS.get(pollutant, {}).get(us_category, (0, 500))
         aqi_range = US_AQI_INDEX.get(us_category, (0, 500))
         
-        # Linear interpolation using US EPA formula
+        # Linear interpolation
         conc_low, conc_high = conc_range
         aqi_low, aqi_high = aqi_range
         
@@ -358,10 +337,7 @@ class AQICalculator:
         }
     
     def calculate_overall_aqi(self, predictions: Dict, standard: str = 'IN') -> Dict:
-        """
-        Calculate overall AQI from all pollutant predictions
-        FIXED: Proper US EPA calculation
-        """
+        """Calculate overall AQI from all pollutant predictions"""
         if not predictions:
             return {
                 'aqi': 0,
@@ -375,8 +351,7 @@ class AQICalculator:
             if standard == 'IN':
                 sub_idx = self.calculate_sub_index_indian(pollutant, category, concentration)
             else:
-                # FIXED: Calculate US AQI directly from concentration (no Indian category dependency)
-                sub_idx = self.calculate_sub_index_us(pollutant, concentration)
+                sub_idx = self.calculate_sub_index_us(pollutant, category, concentration)
             
             sub_indices.append(sub_idx)
         
@@ -507,7 +482,7 @@ class LSTMPredictor:
             # 8. Clip to valid range
             pred_concentration = float(np.clip(pred_concentration, 0, 1000))
             
-            # 9. Map concentration to AQI category (Indian)
+            # 9. Map concentration to AQI category
             category = self.aqi_calculator.concentration_to_category(
                 pred_concentration, pollutant
             )
@@ -535,7 +510,7 @@ class LSTMPredictor:
                            historical_data: pd.DataFrame,
                            pollutant: str,
                            standard: str = 'IN') -> Dict:
-        """Predict for all horizons (1h, 6h, 12h, 24h) with FIXED US EPA calculation"""
+        """Predict for all horizons (1h, 6h, 12h, 24h)"""
         results = {}
         
         fallback_values = {
@@ -547,28 +522,25 @@ class LSTMPredictor:
         
         for horizon in ['1h', '6h', '12h', '24h']:
             try:
-                # Get prediction (returns Indian category + concentration)
-                indian_category, pred_value = self.predict_single(
+                category, pred_value = self.predict_single(
                     current_data=current_data,
                     historical_data=historical_data,
                     pollutant=pollutant,
                     horizon=horizon
                 )
                 
-                # Calculate AQI based on selected standard
                 if standard == 'IN':
                     sub_index = self.aqi_calculator.calculate_sub_index_indian(
-                        pollutant, indian_category, pred_value
+                        pollutant, category, pred_value
                     )
                 else:
-                    # FIXED: Pass only pollutant and concentration (no Indian category dependency)
                     sub_index = self.aqi_calculator.calculate_sub_index_us(
-                        pollutant, pred_value
+                        pollutant, category, pred_value
                     )
                 
                 results[horizon] = {
                     'value': pred_value,
-                    'category': sub_index['category'],  # Use the calculated category (IN or US)
+                    'category': category,
                     'sub_index': sub_index['sub_index'],
                     'pollutant': pollutant,
                     'horizon': horizon,
@@ -581,21 +553,20 @@ class LSTMPredictor:
             except Exception as e:
                 logger.error(f"Prediction failed for {pollutant} {horizon}: {e}")
                 fallback_val = fallback_values.get(pollutant, 75.0)
+                fallback_category = self.aqi_calculator.concentration_to_category(fallback_val, pollutant)
                 
                 if standard == 'IN':
-                    fallback_category = self.aqi_calculator.concentration_to_category(fallback_val, pollutant)
                     fallback_sub = self.aqi_calculator.calculate_sub_index_indian(
                         pollutant, fallback_category, fallback_val
                     )
                 else:
-                    # FIXED: Use direct US calculation
                     fallback_sub = self.aqi_calculator.calculate_sub_index_us(
-                        pollutant, fallback_val
+                        pollutant, fallback_category, fallback_val
                     )
                 
                 results[horizon] = {
                     'value': fallback_val,
-                    'category': fallback_sub['category'],
+                    'category': fallback_category,
                     'sub_index': fallback_sub['sub_index'],
                     'pollutant': pollutant,
                     'horizon': horizon,
