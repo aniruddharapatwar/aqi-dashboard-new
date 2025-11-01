@@ -19,7 +19,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     
-    <!-- ðŸš¨ API Configuration - REPLACE WITH YOUR RAILWAY URL -->
+    <!-- 🚨 API Configuration - REPLACE WITH YOUR RAILWAY URL -->
     <script>
         window.API_CONFIG = {
             
@@ -1038,15 +1038,15 @@
                     gender: ''
                 },
                 messages: [
-                    { role: 'assistant', content: 'ðŸ'‹ Hello! I\'m your enhanced AI air quality assistant with safety validation. Select your profile above and ask me about current air quality, health advice, or pollutant risks!' }
+                    { role: 'assistant', content: '👋 Hello! I\'m your enhanced your enhanced AI air quality assistant with safety validation. Select your profile above and ask me about current air quality, health advice, or pollutant risks!' }
                 ],
                 userInput: '',
                 isTyping: false,
                 pollutants: [
                     { key: 'PM25', name: 'PM2.5', description: 'Fine particles smaller than 2.5 micrometers' },
                     { key: 'PM10', name: 'PM10', description: 'Particles smaller than 10 micrometers' },
-                    { key: 'NO2', name: 'NOâ‚‚', description: 'Nitrogen Dioxide from combustion' },
-                    { key: 'OZONE', name: 'Oâ‚ƒ', description: 'Ground-level ozone from reactions' }
+                    { key: 'NO2', name:  'NO₂', description: 'Nitrogen Dioxide from combustion' },
+                    { key: 'OZONE', name: 'O₃', description: 'Ground-level ozone from reactions' }
                 ],
                 
                 // Features
@@ -1652,26 +1652,26 @@
                     if (aqi <= 50) {
                         this.healthRecommendations = [
                             { icon: 'ðŸƒ', title: 'Exercise Freely', description: 'Air quality is excellent. Perfect for all outdoor activities and exercise.', color: 'green' },
-                            { icon: 'ðŸªŸ', title: 'Ventilate Well', description: 'Keep windows open to refresh indoor air with clean outdoor air.', color: 'green' },
-                            { icon: 'ðŸ'¨â€ðŸ'©â€ðŸ'§', title: 'Family Activities', description: 'Ideal conditions for children and elderly to spend time outdoors.', color: 'green' }
+                            { icon: '🪟', title: 'Ventilate Well', description: 'Keep windows open to refresh indoor air with clean outdoor air.', color: 'green' },
+                            { icon: '👨‍👩‍👧', title: 'Family Activities', description: 'Ideal conditions for children and elderly to spend time outdoors.', color: 'green' }
                         ];
                     } else if (aqi <= 100) {
                         this.healthRecommendations = [
-                            { icon: 'ðŸš¶', title: 'Moderate Activity', description: 'Generally safe for outdoor activities. Sensitive groups should limit prolonged exertion.', color: 'yellow' },
-                            { icon: 'â±ï¸', title: 'Time Awareness', description: 'Consider timing outdoor activities during better air quality hours.', color: 'yellow' },
-                            { icon: 'ðŸ'€', title: 'Monitor Symptoms', description: 'Watch for any breathing discomfort, especially if you\'re sensitive.', color: 'yellow' }
+                            { icon: '🚶', title: 'Moderate Activity', description: 'Generally safe for outdoor activities. Sensitive groups should limit prolonged exertion.', color: 'yellow' },
+                            { icon: '⏱️', title: 'Time Awareness', description: 'Consider timing outdoor activities during better air quality hours.', color: 'yellow' },
+                            { icon: '👀', title: 'Monitor Symptoms', description: 'Watch for any breathing discomfort, especially if you\'re sensitive.', color: 'yellow' }
                         ];
                     } else if (aqi <= 200) {
                         this.healthRecommendations = [
-                            { icon: 'ðŸ˜·', title: 'Wear Masks', description: 'Use N95 masks outdoors. Sensitive groups should reduce outdoor exposure.', color: 'orange' },
-                            { icon: 'ðŸ ', title: 'Stay Indoors', description: 'Limit outdoor activities. Keep windows closed and use air purifiers.', color: 'orange' },
-                            { icon: 'ðŸ'Š', title: 'Medical Attention', description: 'Those with respiratory conditions should keep medications handy.', color: 'orange' }
+                            { icon: '😷', title: 'Wear Masks', description: 'Use N95 masks outdoors. Sensitive groups should reduce outdoor exposure.', color: 'orange' },
+                            { icon: '🏠', title: 'Stay Indoors', description: 'Limit outdoor activities. Keep windows closed and use air purifiers.', color: 'orange' },
+                            { icon: '💊', title: 'Medical Attention', description: 'Those with respiratory conditions should keep medications handy.', color: 'orange' }
                         ];
                     } else {
                         this.healthRecommendations = [
-                            { icon: 'ðŸš¨', title: 'Avoid Outdoors', description: 'Everyone should avoid all outdoor activities. Stay indoors with air purifiers.', color: 'red' },
-                            { icon: 'ðŸ˜·', title: 'N95 Masks Required', description: 'Wear properly fitted N95 masks if you must go outside.', color: 'red' },
-                            { icon: 'ðŸ¥', title: 'Seek Medical Help', description: 'Contact healthcare providers if experiencing breathing difficulties.', color: 'red' }
+                            { icon: '🚨', title: 'Avoid Outdoors', description: 'Everyone should avoid all outdoor activities. Stay indoors with air purifiers.', color: 'red' },
+                            { icon: '😷', title: 'N95 Masks Required', description: 'Wear properly fitted N95 masks if you must go outside.', color: 'red' },
+                            { icon: '🏥', title: 'Seek Medical Help', description: 'Contact healthcare providers if experiencing breathing difficulties.', color: 'red' }
                         ];
                     }
                 },
@@ -1683,12 +1683,12 @@
                     
                     if (aqi > 200) {
                         this.sendBrowserNotification(
-                            'ðŸš¨ Severe Air Quality Alert',
+                            '🚨 Severe Air Quality Alert',
                             `AQI is ${aqi} in ${this.selectedLocation}. Avoid outdoor activities!`
                         );
                     } else if (aqi > 100) {
                         this.sendBrowserNotification(
-                            'âš ï¸ Unhealthy Air Quality',
+                            '⚠️ Unhealthy Air Quality',
                             `AQI is ${aqi} in ${this.selectedLocation}. Limit outdoor exposure.`
                         );
                     }
