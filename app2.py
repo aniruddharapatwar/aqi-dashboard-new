@@ -330,20 +330,9 @@ async def predict(request: PredictionRequest):
                     weather_data[feature] = 0.0
         
         # Add historical AQI data
-        # Line 332-352 (replace entire section)
-        # FIXED: Add historical AQI data using actual 48-hour time window
         historical_aqi = []
         if len(historical) > 0 and 'timestamp' in historical.columns:
-            # Get the most recent timestamp
-            most_recent_time = historical['timestamp'].max()
-            time_cutoff = most_recent_time - pd.Timedelta(hours=48)
-            
-            # Filter to actual last 48 hours
-            historical_subset = historical[historical['timestamp'] >= time_cutoff].copy()
-            historical_subset = historical_subset.sort_values('timestamp')
-            
-            logger.info(f"📊 Historical data range: {historical_subset['timestamp'].min()} to {historical_subset['timestamp'].max()}")
-            logger.info(f"📊 Historical data points: {len(historical_subset)}")
+            historical_subset = historical.tail(48).copy()
             
             for _, row in historical_subset.iterrows():
                 aqi_value = 0
