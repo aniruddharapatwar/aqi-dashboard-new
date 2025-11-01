@@ -377,7 +377,7 @@
                             <h1 class="text-3xl font-black text-gray-900 tracking-tight">
                                 AQI Dashboard
                             </h1>
-                            <p class="text-sm text-gray-600 font-medium">Delhi NCR • Real-time Air Quality Monitoring v2.0</p>
+                            <p class="text-sm text-gray-600 font-medium">Delhi NCR • Real-time Air Quality Monitoring</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
@@ -865,90 +865,42 @@
                                         </select>
                                     </div>
                                     
-                                    <!-- Health Conditions (Multiple Select Dropdown) -->
+                                    <!-- Health Conditions (Multiple Select with Checkboxes) -->
                                     <div class="md:col-span-2">
                                         <label class="block text-xs font-bold text-gray-700 mb-2">Health Conditions (Select All That Apply)</label>
-                                        <div class="relative" x-data="{ open: false }">
-                                            <!-- Selected Items Display / Dropdown Trigger -->
-                                            <button @click="open = !open" 
-                                                    type="button"
-                                                    class="w-full px-3 py-2 bg-white border-2 border-blue-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all text-sm text-left flex items-center justify-between">
-                                                <span class="flex-1 truncate" x-text="userProfile.healthConditions.length > 0 ? userProfile.healthConditions.length + ' selected' : 'Select conditions...'"></span>
-                                                <svg class="w-5 h-5 text-gray-400 transition-transform" :class="{'rotate-180': open}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                                                </svg>
-                                            </button>
-                                            
-                                            <!-- Dropdown Menu -->
-                                            <div x-show="open" 
-                                                 @click.away="open = false"
-                                                 x-transition:enter="transition ease-out duration-200"
-                                                 x-transition:enter-start="opacity-0 transform scale-95"
-                                                 x-transition:enter-end="opacity-100 transform scale-100"
-                                                 x-transition:leave="transition ease-in duration-150"
-                                                 x-transition:leave-start="opacity-100 transform scale-100"
-                                                 x-transition:leave-end="opacity-0 transform scale-95"
-                                                 class="absolute z-50 w-full mt-2 bg-white border-2 border-blue-200 rounded-lg shadow-xl max-h-64 overflow-y-auto custom-scrollbar">
-                                                <div class="p-2">
-                                                    <label class="flex items-center gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer transition-colors">
-                                                        <input type="checkbox" value="asthma" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
-                                                        <span class="text-sm">😷 Asthma</span>
-                                                    </label>
-                                                    <label class="flex items-center gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer transition-colors">
-                                                        <input type="checkbox" value="heart_condition" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
-                                                        <span class="text-sm">❤️ Heart Condition</span>
-                                                    </label>
-                                                    <label class="flex items-center gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer transition-colors">
-                                                        <input type="checkbox" value="respiratory" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
-                                                        <span class="text-sm">🫁 Respiratory Issues</span>
-                                                    </label>
-                                                    <label class="flex items-center gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer transition-colors">
-                                                        <input type="checkbox" value="copd" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
-                                                        <span class="text-sm">🫁 COPD</span>
-                                                    </label>
-                                                    <label class="flex items-center gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer transition-colors">
-                                                        <input type="checkbox" value="diabetes" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
-                                                        <span class="text-sm">🩸 Diabetes</span>
-                                                    </label>
-                                                    <label class="flex items-center gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer transition-colors">
-                                                        <input type="checkbox" value="pregnant" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
-                                                        <span class="text-sm">🤰 Pregnant</span>
-                                                    </label>
-                                                    <label class="flex items-center gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer transition-colors">
-                                                        <input type="checkbox" value="hypertension" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
-                                                        <span class="text-sm">🩺 Hypertension</span>
-                                                    </label>
-                                                    <label class="flex items-center gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer transition-colors">
-                                                        <input type="checkbox" value="allergies" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
-                                                        <span class="text-sm">🤧 Allergies</span>
-                                                    </label>
-                                                </div>
-                                                
-                                                <!-- Clear All Button -->
-                                                <div class="border-t border-gray-200 p-2" x-show="userProfile.healthConditions.length > 0">
-                                                    <button @click="userProfile.healthConditions = []; open = false" 
-                                                            type="button"
-                                                            class="w-full px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 rounded transition-colors">
-                                                        Clear All
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            
-                                            <!-- Selected Pills Display -->
-                                            <div class="flex flex-wrap gap-1 mt-2" x-show="userProfile.healthConditions.length > 0">
-                                                <template x-for="condition in userProfile.healthConditions" :key="condition">
-                                                    <span class="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">
-                                                        <span x-text="condition.replace('_', ' ')"></span>
-                                                        <button @click="userProfile.healthConditions = userProfile.healthConditions.filter(c => c !== condition)" 
-                                                                type="button"
-                                                                class="hover:text-blue-900">
-                                                            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                                                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
-                                                            </svg>
-                                                        </button>
-                                                    </span>
-                                                </template>
-                                            </div>
+                                        <div class="grid grid-cols-2 gap-2 bg-white border-2 border-blue-200 rounded-lg p-3 max-h-32 overflow-y-auto custom-scrollbar">
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="asthma" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>😷 Asthma</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="heart_condition" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>❤️ Heart Condition</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="respiratory" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>🫁 Respiratory Issues</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="copd" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>🫁 COPD</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="diabetes" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>🩸 Diabetes</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="pregnant" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>🤰 Pregnant</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="hypertension" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>🩺 Hypertension</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-blue-50 p-2 rounded transition-colors">
+                                                <input type="checkbox" value="allergies" x-model="userProfile.healthConditions" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                                <span>🤧 Allergies</span>
+                                            </label>
                                         </div>
                                     </div>
                                     
@@ -1053,7 +1005,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
                     </div>
-                    <h2 class="text-3xl font-black text-white mb-3">Welcome to AQI Dashboard v2.0</h2>
+                    <h2 class="text-3xl font-black text-white mb-3">Welcome to AQI Dashboard</h2>
                     <p class="text-xl text-white/80 font-medium">Select a region and location to begin monitoring</p>
                 </div>
             </template>
@@ -1061,7 +1013,7 @@
 
         <!-- Footer -->
         <footer class="mt-16 pb-8 text-center text-white/60 text-sm">
-            <p>© 2025 AQI Dashboard v2.0. Enhanced AI with Safety Validation. Data for informational purposes only.</p>
+            <p>© 2025 AQI Dashboard Enhanced AI with Safety Validation. Data for informational purposes only.</p>
         </footer>
     </div>
 
