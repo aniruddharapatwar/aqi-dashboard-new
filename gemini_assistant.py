@@ -63,7 +63,7 @@ class GeminiAssistant:
                     self.model = genai.GenerativeModel(
                         model_name,
                         generation_config={
-                            'temperature': 0.4,
+                            'temperature': 0.7,
                             'top_p': 0.9,
                             'top_k': 40,
                             'max_output_tokens': 1500,
@@ -93,7 +93,7 @@ class GeminiAssistant:
                     if test_response and test_response.text:
                         self.model_name = model_name
                         self.enabled = True
-                        logger.info(f"âœ" Gemini initialized successfully with {model_name}")
+                        logger.info(f"[SUCCESS] Gemini initialized successfully with {model_name}")
                         return
                 except Exception as e:
                     logger.warning(f"Failed to initialize {model_name}: {e}")
@@ -187,7 +187,7 @@ class GeminiAssistant:
                 logger.warning("Empty response text")
                 return self._fallback_response(context, user_profile, "Empty AI response")
             
-            logger.info(f"âœ" Received response from {self.model_name} ({len(response_text)} chars)")
+            logger.info(f"[SUCCESS] Received response from {self.model_name} ({len(response_text)} chars)")
             
             # Light validation (only check for dangerous advice)
             validation_result = self._validate_response(
