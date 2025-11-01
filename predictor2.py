@@ -445,71 +445,6 @@ class LSTMPredictor:
         self.aqi_calculator = AQICalculator()
         self.pollutants = ['PM25', 'PM10', 'NO2', 'OZONE']
     
-    def calculate_confidence(self, pollutant: str, horizon: str, 
-                            sequence_length: int, actual_length: int,
-                            pred_value: float) -> float:
-        """
-        Calculate realistic confidence score based on:
-        1. Prediction horizon (shorter = more confident)
-        2. Pollutant type (some are more predictable)
-        3. Data completeness (full sequence = more confident)
-        4. Prediction reasonableness (extreme values = less confident)
-        """
-        # Base confidence by horizon (shorter horizons are more reliable)
-        horizon_confidence = {
-            '1h': 0.88,   # Very short-term
-            '6h': 0.82,   # Short-term
-            '12h': 0.75,  # Medium-term
-            '24h': 0.68   # Long-term
-        }
-        
-        # Pollutant-specific factors (based on predictability)
-        pollutant_factor = {
-            'PM25': 1.00,   # Most predictable (slow changes)
-            'PM10': 0.98,   # Very predictable
-            'NO2': 0.95,    # Moderate (traffic patterns)
-            'OZONE': 0.92   # Least predictable (photochemistry, weather-dependent)
-        }
-        
-        # Data completeness penalty
-        data_completeness = min(1.0, actual_length / sequence_length)
-        if data_completeness < 0.5:
-            data_penalty = 0.85  # Severe penalty
-        elif data_completeness < 0.8:
-            data_penalty = 0.93  # Moderate penalty
-        else:
-            data_penalty = 1.0   # No penalty
-        
-        # Reasonableness check (extreme predictions are less reliable)
-        reasonable_ranges = {
-            'PM25': (0, 500),
-            'PM10': (0, 600),
-            'NO2': (0, 500),
-            'OZONE': (0, 500)
-        }
-        min_val, max_val = reasonable_ranges.get(pollutant, (0, 500))
-        
-        if pred_value < 0 or pred_value > max_val * 1.5:
-            # Extreme prediction - lower confidence
-            reasonableness_penalty = 0.85
-        elif pred_value > max_val:
-            # High but possible - slight penalty
-            reasonableness_penalty = 0.95
-        else:
-            # Normal range - no penalty
-            reasonableness_penalty = 1.0
-        
-        # Calculate final confidence
-        base_conf = horizon_confidence.get(horizon, 0.75)
-        poll_factor = pollutant_factor.get(pollutant, 1.0)
-        
-        confidence = base_conf * poll_factor * data_penalty * reasonableness_penalty
-        
-        # Clamp between 0.50 and 0.95 (never show 100% or below 50%)
-        confidence = max(0.50, min(0.95, confidence))
-        
-        return round(confidence, 2)
-    
     def predict_single(self,
                       current_data: pd.DataFrame,
                       historical_data: pd.DataFrame,
@@ -612,26 +547,12 @@ class LSTMPredictor:
         
         for horizon in ['1h', '6h', '12h', '24h']:
             try:
-                # Get model artifact for sequence length
-                model_artifact = self.model_manager.load_model(pollutant, horizon)
-                expected_seq_len = model_artifact['sequence_length']
-                actual_seq_len = len(historical_data)
-                
                 # Get prediction (returns Indian category + concentration)
                 indian_category, pred_value = self.predict_single(
                     current_data=current_data,
                     historical_data=historical_data,
                     pollutant=pollutant,
                     horizon=horizon
-                )
-                
-                # Calculate realistic confidence score
-                confidence = self.calculate_confidence(
-                    pollutant=pollutant,
-                    horizon=horizon,
-                    sequence_length=expected_seq_len,
-                    actual_length=actual_seq_len,
-                    pred_value=pred_value
                 )
                 
                 # Calculate AQI based on selected standard
@@ -651,12 +572,11 @@ class LSTMPredictor:
                     'sub_index': sub_index['sub_index'],
                     'pollutant': pollutant,
                     'horizon': horizon,
-                    'aqi_min': max(0, sub_index['sub_index'] - 25),      # Prevent negative values
-                    'aqi_max': min(500, sub_index['sub_index'] + 25),    # Cap at 500
+                    'aqi_min': sub_index['sub_index'] - 25,
+                    'aqi_max': sub_index['sub_index'] + 25,
                     'aqi_mid': sub_index['sub_index'],
-                    'confidence': confidence  # Dynamic confidence!
+                    'confidence': 0.85
                 }
-                
                 
             except Exception as e:
                 logger.error(f"Prediction failed for {pollutant} {horizon}: {e}")
@@ -673,19 +593,16 @@ class LSTMPredictor:
                         pollutant, fallback_val
                     )
                 
-                # Lower confidence for fallback/error cases
-                fallback_confidence = 0.45 if 'model' in str(e).lower() or 'load' in str(e).lower() else 0.55
-                
                 results[horizon] = {
                     'value': fallback_val,
                     'category': fallback_sub['category'],
                     'sub_index': fallback_sub['sub_index'],
                     'pollutant': pollutant,
                     'horizon': horizon,
-                    'aqi_min': max(0, fallback_sub['sub_index'] - 25),      # Prevent negative values
-                    'aqi_max': min(500, fallback_sub['sub_index'] + 25),    # Cap at 500
+                    'aqi_min': fallback_sub['sub_index'] - 25,
+                    'aqi_max': fallback_sub['sub_index'] + 25,
                     'aqi_mid': fallback_sub['sub_index'],
-                    'confidence': fallback_confidence,  # Lower confidence for errors
+                    'confidence': 0.50,
                     'error': str(e)
                 }
         

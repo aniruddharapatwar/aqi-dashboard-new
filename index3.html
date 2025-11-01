@@ -722,7 +722,7 @@
                                              x-text="predictions[pollutant.key]?.[horizon]?.category?.replace('_', ' ')">
                                         </div>
                                         <div class="text-sm text-gray-600 font-semibold">
-                                            Concentration: <span x-text="Math.round(predictions[pollutant.key]?.[horizon]?.value || 0)"></span> µg/m³
+                                            Concentration: <span x-text="Math.round(predictions[pollutant.key]?.[horizon]?.value || 0)"></span>
                                         </div>
                                         <div class="text-xs text-gray-500 mt-1">
                                             AQI: <span x-text="Math.round(predictions[pollutant.key]?.[horizon]?.aqi_mid || 0)"></span>
