@@ -52,19 +52,19 @@ INDIAN_AQI_INDEX = {
 
 US_AQI_BREAKPOINTS = {
     'PM25': {
-        'Good': (0.0, 12.0), 'Moderate': (12.1, 35.4), 'Unhealthy_for_Sensitive': (35.5, 55.4),
+        'Good': (0.0, 12.0), 'Moderate': (12.1, 35.4), 'Unhealthy (for sensitive)': (35.5, 55.4),
         'Unhealthy': (55.5, 150.4), 'Very_Unhealthy': (150.5, 250.4), 'Hazardous': (250.5, 500.4)
     },
     'PM10': {
-        'Good': (0, 54), 'Moderate': (55, 154), 'Unhealthy_for_Sensitive': (155, 254),
+        'Good': (0, 54), 'Moderate': (55, 154), 'Unhealthy (for sensitive)': (155, 254),
         'Unhealthy': (255, 354), 'Very_Unhealthy': (355, 424), 'Hazardous': (425, 604)
     },
     'NO2': {
-        'Good': (0, 53), 'Moderate': (54, 100), 'Unhealthy_for_Sensitive': (101, 360),
+        'Good': (0, 53), 'Moderate': (54, 100), 'Unhealthy (for sensitive)': (101, 360),
         'Unhealthy': (361, 649), 'Very_Unhealthy': (650, 1249), 'Hazardous': (1250, 2049)
     },
     'OZONE': {
-        'Good': (0.000, 0.054), 'Moderate': (0.055, 0.070), 'Unhealthy_for_Sensitive': (0.071, 0.085),
+        'Good': (0.000, 0.054), 'Moderate': (0.055, 0.070), 'Unhealthy (for sensitive)': (0.071, 0.085),
         'Unhealthy': (0.086, 0.105), 'Very_Unhealthy': (0.106, 0.200), 'Hazardous': (0.201, 0.604)
     }
 }
@@ -72,7 +72,7 @@ US_AQI_BREAKPOINTS = {
 US_AQI_INDEX = {
     'Good': (0, 50),
     'Moderate': (51, 100),
-    'Unhealthy_for_Sensitive': (101, 150),
+    'Unhealthy (for sensitive)': (101, 150),
     'Unhealthy': (151, 200),
     'Very_Unhealthy': (201, 300),
     'Hazardous': (301, 500)

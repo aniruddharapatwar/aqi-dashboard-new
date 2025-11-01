@@ -1854,7 +1854,7 @@
                     const colors = {
                         'Good': '#10b981', 'Satisfactory': '#f59e0b', 'Moderate': '#f97316',
                         'Poor': '#ef4444', 'Very_Poor': '#a855f7', 'Severe': '#991b1b',
-                        'Unhealthy_for_Sensitive': '#f97316', 'Unhealthy': '#ef4444',
+                        'Unhealthy (for sensitive)': '#f97316', 'Unhealthy': '#ef4444',
                         'Very_Unhealthy': '#a855f7', 'Hazardous': '#991b1b'
                     };
                     return colors[category] || '#94a3b8';
@@ -1867,7 +1867,13 @@
                         'Moderate': 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
                         'Poor': 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                         'Very_Poor': 'linear-gradient(135deg, #a855f7 0%, #9333ea 100%)',
-                        'Severe': 'linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%)'
+                        'Severe': 'linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%)',
+
+                        // US EPA Categories (ADD THESE)
+                        'Unhealthy (for sensitive)': 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                        'Unhealthy': 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                        'Very_Unhealthy': 'linear-gradient(135deg, #a855f7 0%, #9333ea 100%)',
+                        'Hazardous': 'linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%)'
                     };
                     return gradients[category] || gradients['Good'];
                 }
