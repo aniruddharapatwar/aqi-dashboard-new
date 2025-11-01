@@ -1,6 +1,6 @@
 """
 Simplified Gemini AI Assistant - Natural Conversational Style
-Removes rigid JSON schema and allows natural, contextual responses
+UPDATED: Support for multiple health conditions
 """
 
 import logging
@@ -22,6 +22,7 @@ class GeminiAssistant:
     Simplified AI Assistant with:
     - Natural conversational responses (no rigid JSON schema)
     - Context-aware advice based on AQI and user profile
+    - Support for MULTIPLE health conditions
     - Increased token limit for complete responses
     - Minimal validation (only for dangerous advice)
     """
@@ -65,7 +66,7 @@ class GeminiAssistant:
                             'temperature': 0.7,
                             'top_p': 0.9,
                             'top_k': 40,
-                            'max_output_tokens': 1500,  # INCREASED from 300
+                            'max_output_tokens': 1500,
                         },
                         safety_settings=[
                             {
@@ -92,7 +93,7 @@ class GeminiAssistant:
                     if test_response and test_response.text:
                         self.model_name = model_name
                         self.enabled = True
-                        logger.info(f"✓ Gemini initialized successfully with {model_name}")
+                        logger.info(f"âœ" Gemini initialized successfully with {model_name}")
                         return
                 except Exception as e:
                     logger.warning(f"Failed to initialize {model_name}: {e}")
@@ -108,6 +109,7 @@ class GeminiAssistant:
     def get_response(self, message: str, context: Dict) -> Dict:
         """
         Get natural AI response without rigid structure
+        UPDATED: Handles multiple health conditions from context
         
         Args:
             message: User's question/message
@@ -185,7 +187,7 @@ class GeminiAssistant:
                 logger.warning("Empty response text")
                 return self._fallback_response(context, user_profile, "Empty AI response")
             
-            logger.info(f"✓ Received response from {self.model_name} ({len(response_text)} chars)")
+            logger.info(f"âœ" Received response from {self.model_name} ({len(response_text)} chars)")
             
             # Light validation (only check for dangerous advice)
             validation_result = self._validate_response(
@@ -211,7 +213,10 @@ class GeminiAssistant:
     
     def _build_natural_prompt(self, message: str, location: str, aqi_data: Dict,
                               weather_data: Dict, user_profile: Dict) -> str:
-        """Build natural, conversational prompt"""
+        """
+        Build natural, conversational prompt
+        UPDATED: Handles multiple health conditions
+        """
         
         # Extract data
         aqi_mid = aqi_data.get('aqi_mid', 0)
@@ -222,15 +227,20 @@ class GeminiAssistant:
         humidity = weather_data.get('humidity', 0)
         wind_speed = weather_data.get('windSpeed', 0)
         
-        # Profile info
+        # Profile info - UPDATED to handle array of conditions
         profile_label = user_profile.get('profile_label', 'general public')
         age_category = user_profile.get('age_category', '')
-        health_category = user_profile.get('health_category', '')
+        health_conditions = user_profile.get('health_conditions', [])  # ARRAY
         
-        # Build context
+        # Build context - UPDATED for multiple conditions
         profile_context = ""
-        if health_category:
-            profile_context = f"The user has {health_category}."
+        if health_conditions and len(health_conditions) > 0:
+            if len(health_conditions) == 1:
+                profile_context = f"The user has {health_conditions[0]}."
+            else:
+                conditions_str = ', '.join(health_conditions[:-1]) + f' and {health_conditions[-1]}'
+                profile_context = f"The user has multiple health conditions: {conditions_str}."
+        
         if age_category:
             profile_context += f" They are in the {age_category} age group."
         
@@ -240,7 +250,7 @@ CURRENT CONDITIONS:
 Location: {location}
 Air Quality: {category} (AQI {aqi_mid:.0f})
 Main Pollutant: {dominant}
-Weather: {temp:.1f}°C, {humidity:.0f}% humidity, {wind_speed:.0f} km/h wind
+Weather: {temp:.1f}Â°C, {humidity:.0f}% humidity, {wind_speed:.0f} km/h wind
 
 USER INFO:
 {profile_context if profile_context else "No specific health conditions mentioned."}
@@ -254,6 +264,7 @@ INSTRUCTIONS:
 - Be specific about the CURRENT air quality conditions
 - Give practical, actionable advice
 - If air quality is poor/dangerous, be clear about the risks
+- If the user has multiple health conditions, address ALL of them in your response
 - Keep response concise (3-5 short paragraphs maximum)
 - Use simple language, avoid medical jargon
 - DON'T use rigid formats or section headers unless natural
@@ -318,6 +329,7 @@ Your response:"""
     def _static_response(self, context: Dict, user_profile: Dict = None) -> str:
         """
         Simple static fallback responses
+        UPDATED: Handles multiple health conditions
         """
         aqi_data = context.get('aqi_data', {})
         category = aqi_data.get('category', 'Unknown')
@@ -326,21 +338,32 @@ Your response:"""
         location = context.get('location', 'your area')
         
         profile_label = 'general public'
+        health_conditions_str = ''
+        
         if user_profile:
             profile_label = user_profile.get('profile_label', 'general public')
+            health_conditions = user_profile.get('health_conditions', [])
+            
+            # Build health conditions string
+            if health_conditions and len(health_conditions) > 0:
+                if len(health_conditions) == 1:
+                    health_conditions_str = f" with {health_conditions[0]}"
+                else:
+                    conditions_friendly = ', '.join(health_conditions[:-1]) + f' and {health_conditions[-1]}'
+                    health_conditions_str = f" with {conditions_friendly}"
         
         responses = {
             'Good': f"Air quality in {location} is excellent right now (AQI {aqi_mid:.0f}). It's a great time for outdoor activities!",
             
-            'Satisfactory': f"Air quality in {location} is acceptable (AQI {aqi_mid:.0f}). Most people can enjoy outdoor activities normally. If you're sensitive to air pollution, just monitor how you feel.",
+            'Satisfactory': f"Air quality in {location} is acceptable (AQI {aqi_mid:.0f}). Most people can enjoy outdoor activities normally. If you're sensitive to air pollution{health_conditions_str}, just monitor how you feel.",
             
-            'Moderate': f"Air quality in {location} is moderate (AQI {aqi_mid:.0f}), mainly due to {dominant}. For {profile_label}, it's best to limit prolonged outdoor activities. If you go out, consider wearing a mask, especially in high-traffic areas.",
+            'Moderate': f"Air quality in {location} is moderate (AQI {aqi_mid:.0f}), mainly due to {dominant}. For {profile_label}{health_conditions_str}, it's best to limit prolonged outdoor activities. If you go out, consider wearing a mask, especially in high-traffic areas.",
             
-            'Poor': f"Air quality in {location} is poor (AQI {aqi_mid:.0f}) due to {dominant} pollution. I'd recommend limiting time outdoors. If you need to go out, wear an N95 mask and avoid strenuous activities. Keep windows closed and use an air purifier indoors if you have one.",
+            'Poor': f"Air quality in {location} is poor (AQI {aqi_mid:.0f}) due to {dominant} pollution. I'd recommend limiting time outdoors. If you need to go out, wear an N95 mask and avoid strenuous activities. Keep windows closed and use an air purifier indoors if you have one.{' Given your health conditions' + health_conditions_str + ', extra caution is advised.' if health_conditions_str else ''}",
             
-            'Very_Poor': f"Air quality in {location} is very poor right now (AQI {aqi_mid:.0f}), with high {dominant} levels. It's best to stay indoors as much as possible. If you must go outside, always wear an N95 mask and keep it brief. Run air purifiers at home and keep windows sealed.",
+            'Very_Poor': f"Air quality in {location} is very poor right now (AQI {aqi_mid:.0f}), with high {dominant} levels. It's best to stay indoors as much as possible. If you must go outside, always wear an N95 mask and keep it brief. Run air purifiers at home and keep windows sealed.{' With your conditions' + health_conditions_str + ', staying indoors is especially important.' if health_conditions_str else ''}",
             
-            'Severe': f"⚠️ URGENT: Air quality in {location} is at severe levels (AQI {aqi_mid:.0f}). This is a health emergency. Please stay indoors, seal windows and doors, and run air purifiers continuously. Only go outside if absolutely necessary, and wear a properly fitted N95 mask. If you experience breathing difficulties, seek medical attention immediately."
+            'Severe': f"âš ï¸ URGENT: Air quality in {location} is at severe levels (AQI {aqi_mid:.0f}). This is a health emergency. Please stay indoors, seal windows and doors, and run air purifiers continuously. Only go outside if absolutely necessary, and wear a properly fitted N95 mask. If you experience breathing difficulties, seek medical attention immediately.{' Your health conditions' + health_conditions_str + ' put you at higher risk - please take extra precautions.' if health_conditions_str else ''}"
         }
         
         return responses.get(category, 
