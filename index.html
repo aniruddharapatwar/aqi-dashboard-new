@@ -1464,109 +1464,47 @@
                         };
                     }
                 },
-
+                
                 formatResponse(text, role = 'assistant') {
                     if (!text) return '';
                     
-                    // For user messages, just return the text with basic HTML escaping and line breaks
+                    // For user messages, just basic formatting
                     if (role === 'user') {
-                        // AGGRESSIVELY remove any disclaimer from user messages
-                        // Remove with emoji
-                        text = text.replace(/⚠️\s*\*\*Important:\*\*.*/gi, '');
-                        text = text.replace(/⚠️\s*Important:.*/gi, '');
-                        // Remove without emoji
-                        text = text.replace(/\*\*Important:\*\*.*/gi, '');
-                        text = text.replace(/Important:\s*This is not medical advice.*/gi, '');
-                        // Remove just the sentence
-                        text = text.replace(/This is not medical advice.*/gi, '');
-                        text = text.replace(/Please consult a healthcare professional.*/gi, '');
-                        // Remove any HTML formatted versions
-                        text = text.replace(/<div[^>]*yellow[^>]*>.*?<\/div>/gis, '');
-                        text = text.replace(/<div[^>]*Important[^>]*>.*?<\/div>/gis, '');
-                        
-                        // Basic formatting only
                         text = text.replace(/\n/g, '<br>');
                         return text.trim();
                     }
                     
-                    // For assistant messages, apply full formatting
-                    const originalText = text;
-                    
-                    // Check if response has structured format (section headers)
-                    const hasStructure = /\*\*(?:Current Situation|Your Risk Level|Recommended Actions):\*\*/i.test(text);
+                    // For assistant: SIMPLE, NATURAL formatting
                     
                     // 1. Convert **bold** to <strong>
                     text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
                     
-                    // 2. Handle section headers with special styling
-                    text = text.replace(/<strong>(Current Situation|Your Risk Level|Recommended Actions|Weather):<\/strong>/gi, 
-                        '<div class="font-bold text-base mt-4 mb-2 text-blue-600">$1:</div>');
-                    
-                    // 3. Handle list items with various markers (remove emojis)
-                    text = text.replace(/^[\s]*([•✓✅🚨⚠️🛑🔴🏠😷💊📞👨‍👩‍👧🚶‍♂️🤰👴👶🫁❤️*✔️⛔🚫💨-]|\d+\.)\s+(.+)$/gm, (match, marker, content) => {
+                    // 2. Handle bullet points (•, -, *, numbers)
+                    text = text.replace(/^[\s]*([•\-\*]|\d+\.)\s+(.+)$/gm, (match, marker, content) => {
                         return `<li class="ml-2">${content.trim()}</li>`;
                     });
                     
-                    // 4. Wrap consecutive <li> elements in <ul>
+                    // 3. Wrap consecutive <li> in <ul>
                     text = text.replace(/(<li class="ml-2">.*?<\/li>\s*)+/gs, (match) => {
-                        return `<ul class="space-y-2 mt-2 mb-4">${match}</ul>`;
+                        return `<ul class="space-y-1 mt-2 mb-3 list-disc list-inside">${match}</ul>`;
                     });
                     
-                    // 5. If no structure detected, intelligently add structure (no emojis)
-                    if (!hasStructure && !text.includes('<ul>')) {
-                        const sentences = originalText.split(/\.\s+/);
-                        
-                        if (sentences.length > 3) {
-                            let structured = '<div class="font-bold text-base mt-2 mb-2 text-blue-600">Current Situation & Recommendations:</div>';
-                            structured += '<ul class="space-y-2 mt-2 mb-4">';
-                            
-                            sentences.forEach((sentence, idx) => {
-                                if (sentence.trim() && !sentence.includes('Important:') && !sentence.includes('medical advice')) {
-                                    structured += `<li class="ml-2">${sentence.trim()}${sentence.trim().endsWith('.') ? '' : '.'}</li>`;
-                                }
-                            });
-                            
-                            structured += '</ul>';
-                            text = structured;
-                        }
-                    }
+                    // 4. Double line breaks → paragraphs
+                    text = text.replace(/\n\n+/g, '</p><p class="mt-3 mb-3">');
                     
-                    // 6. Handle paragraphs - convert double line breaks
-                    text = text.replace(/\n\n+/g, '</p><p class="mt-3">');
-                    
-                    // 7. Convert remaining single line breaks to <br>
+                    // 5. Single line breaks → <br>
                     text = text.replace(/\n/g, '<br>');
                     
-                    // 8. Wrap in paragraph if needed
-                    if (!text.startsWith('<div') && !text.startsWith('<ul') && !text.startsWith('<p>')) {
+                    // 6. Wrap in <p> if not already structured
+                    if (!text.startsWith('<ul') && !text.startsWith('<p>') && !text.startsWith('<div')) {
                         text = '<p class="mb-3">' + text + '</p>';
                     }
                     
-                    // 9. Clean up empty paragraphs
-                    text = text.replace(/<p[^>]*><\/p>/g, '');
+                    // 7. Clean up empty elements
+                    text = text.replace(/<p[^>]*>\s*<\/p>/g, '');
                     text = text.replace(/<br\s*\/?>\s*<br\s*\/?>/g, '<br>');
                     
-                    // 10. Remove ALL disclaimers completely (ONLY for assistant)
-                    // AGGRESSIVELY remove ANY existing disclaimer in ANY format
-                    text = text.replace(/⚠️\s*\*\*Important:\*\*.*/gis, '');
-                    text = text.replace(/⚠️\s*<strong>Important:<\/strong>.*/gis, '');
-                    text = text.replace(/<strong>Important:<\/strong>.*/gis, '');
-                    text = text.replace(/\*\*Important:\*\*.*/gis, '');
-                    text = text.replace(/Important:\s*This is not medical advice.*/gis, '');
-                    text = text.replace(/This is not medical advice.*/gis, '');
-                    text = text.replace(/Please consult a healthcare professional.*/gis, '');
-                    text = text.replace(/<div[^>]*yellow[^>]*>.*?<\/div>/gis, '');
-                    text = text.replace(/<div[^>]*bg-yellow[^>]*>.*?<\/div>/gis, '');
-                    text = text.replace(/<br>\s*⚠️.*/gis, '');
-                    
-                    // Clean up any trailing breaks and empty paragraphs
-                    text = text.replace(/(<br\s*\/?>)+\s*$/g, '');
-                    text = text.replace(/\s*<\/p>\s*$/g, '</p>');
-                    text = text.replace(/<p[^>]*>\s*<\/p>/g, '');
-                    
-                    // NO DISCLAIMER - removed completely
-                    
-                    return text;
+                    return text.trim();
                 },
 
                 async sendMessage() {
